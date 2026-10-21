@@ -1,0 +1,17 @@
+{
+  "source": "runs/multispk_deep_r6/best.pt",
+  "epoch": 79,
+  "val_si_sdri_mean_2_3_4spk": 8.4,
+  "note": "U-eConv-TSE R=6 trained from scratch on 2-4 speaker dynamic mixing (configs/multispk_deep.yaml)",
+  "saved": "2026-10-22T02:08:43",
+  "sha256": {
+    "best.pt": "673fb0e62265134680ef337f2e27ca9db8af7e500376883ec13c1cab2f0f95db",
+    "config.yaml": "0627e5c0c7ba412240411a14e20d2db9c6893fc07fdfdaf71f281a6b64b17443",
+    "Libri3Mix_test_metrics.json": "d6bdb4d10e6dfa55517757054e016a041affbb615de9aac96578301749add5a4",
+    "Libri4Mix_test_metrics.json": "54a0c8a7a63de4fc92c4c99b75b6c42d7fdcf590ceef6fc31ddb11ea2900eb90",
+    "profile.json": "d4bb8d617421c2215f50133261b894a6ff0c23b7d8f125c30dce0d6d4da784ef",
+    "test_metrics.json": "b9541417998dcee3b13029048b337281e970719993dab1547266a307a1cbb6b6",
+    "train.log": "6f7796937abd5c0ecebfd484ba06676f64a44f2472393138384b118c7ea51246",
+    "train_log.csv": "12a6863fc1e7dcd82ece7d90778884b5c13a9e23c74255b1095df69d0c6bde5f"
+  }
+}

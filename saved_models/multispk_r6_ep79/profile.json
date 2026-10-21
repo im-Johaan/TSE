@@ -1,0 +1,34 @@
+{
+  "device": "NVIDIA GeForce RTX 5090",
+  "seconds": 4.0,
+  "results": [
+    {
+      "config": "configs/proposed.yaml",
+      "model": "ueconv_tse",
+      "params_M": 8.71125,
+      "params_inference_M": 8.646743,
+      "gflops_total": 20.65014272,
+      "gflops_spk_encoder": 9.150119936,
+      "gflops_separator": 11.500022784000002,
+      "gflops_train_forward_with_interf": 21.633556992,
+      "peak_gpu_mem_MB": 49.0546875,
+      "weights_MB": 42.63427734375,
+      "latency_ms": 6.298549997154623,
+      "rtf": 0.0015746374992886558
+    },
+    {
+      "config": "configs/multispk_deep.yaml",
+      "model": "ueconv_tse",
+      "params_M": 13.597473,
+      "params_inference_M": 13.532966,
+      "gflops_total": 30.970222592,
+      "gflops_spk_encoder": 9.150119936,
+      "gflops_separator": 21.820102656,
+      "gflops_train_forward_with_interf": 32.346951168,
+      "peak_gpu_mem_MB": 49.4599609375,
+      "weights_MB": 61.28173828125,
+      "latency_ms": 9.661699936259538,
+      "rtf": 0.0024154249840648845
+    }
+  ]
+}

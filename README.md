@@ -267,6 +267,72 @@ New config keys:
 | `data.val_name` | 2spk | log name of the main validation set |
 | `train.init_from` | null | initialise weights from a checkpoint |
 
+### Multi-speaker results (test sets, measured)
+
+All numbers come from `scripts/evaluate.py` on the full test sets, each with its fixed enrollment table:
+
+* Libri2Mix: 6,000 samples
+* Libri3Mix: 9,000 samples
+* Libri4Mix: 12,000 samples
+
+Columns:
+
+* **NSR:** the share of outputs with SI-SDRi below 0 dB (wrong speaker or a failed extraction).
+* **<5dB:** the share of outputs that improve by less than 5 dB.
+
+To regenerate the table: `python scripts/compare_results.py saved_models/proposed_2spk_ep74 runs/finetune_multispk runs/multispk_deep_r6`.
+
+The models compared:
+
+* **2-spk model:** R=3, 8.7M params, 20.7 GFLOPs per 4 s.
+* **Fine-tuned:** the 2-spk model, fine-tuned for 25 epochs on 2–4 speaker dynamic mixing (`configs/finetune_multispk.yaml`).
+* **R=6 from scratch:** the same recipe trained from scratch with 6 stages, 13.6M params, 31.0 GFLOPs, for 80 epochs (`configs/multispk_deep.yaml`).
+
+Measured on the RTX 5090 with fp32 at batch 1, the latency for 4 s of audio is 6.3 ms for R=3 and 9.7 ms for R=6.
+
+| test set | model | SI-SDRi | median | SDRi | STOI | NSR % | <5dB % |
+|---|---|---|---|---|---|---|---|
+| 2 spk (Libri2Mix) | 2-spk model (epoch 74) | **9.61** | 10.98 | 10.12 | 0.858 | **5.6** | **12.0** |
+| 2 spk (Libri2Mix) | fine-tuned on 2–4 spk | 8.73 | 10.48 | 9.41 | 0.841 | 8.8 | 17.0 |
+| 2 spk (Libri2Mix) | R=6 from scratch, 2–4 spk | 9.49 | 11.11 | 10.15 | 0.854 | 7.5 | 13.0 |
+| 3 spk (Libri3Mix) | 2-spk model (epoch 74) | 4.84 | 5.36 | 4.97 | 0.703 | **7.1** | 46.1 |
+| 3 spk (Libri3Mix) | fine-tuned on 2–4 spk | 7.19 | 8.49 | 7.78 | 0.734 | 8.3 | 22.4 |
+| 3 spk (Libri3Mix) | R=6 from scratch, 2–4 spk | **8.13** | 9.60 | 8.76 | 0.756 | 7.8 | **17.6** |
+| 4 spk (Libri4Mix*) | 2-spk model (epoch 74) | 3.13 | 3.40 | 3.20 | 0.602 | 8.9 | 76.9 |
+| 4 spk (Libri4Mix*) | fine-tuned on 2–4 spk | 6.06 | 7.05 | 6.62 | 0.653 | **8.5** | 30.3 |
+| 4 spk (Libri4Mix*) | R=6 from scratch, 2–4 spk | **7.00** | 8.33 | 7.61 | 0.679 | **8.5** | **23.9** |
+
+\* Our own 4-speaker extension, not an official benchmark.
+
+SI-SDRi split by gender (same gender means at least one interferer has the target's gender):
+
+| test set | 2-spk model: same / different | fine-tuned: same / different | R=6: same / different |
+|---|---|---|---|
+| 2 spk | 8.59 / 10.62 | 7.87 / 9.59 | 8.55 / 10.42 |
+| 3 spk | 4.35 / 6.29 | 6.72 / 8.57 | 7.65 / 9.52 |
+| 4 spk | 2.96 / 4.27 | 5.83 / 7.66 | 6.75 / 8.73 |
+
+What the results show:
+
+* **Fine-tuning helps 3–4 speakers a lot.** On 3 speakers it adds +2.35 dB, and outputs below 5 dB drop from 46% to 22%. On 4 speakers it adds +2.93 dB, with 77% → 30%.
+* **The cost is on 2 speakers:** −0.88 dB, and NSR rises from 5.6% to 8.8%.
+* **Target confusion did not improve.** NSR is roughly flat or worse, while leakage dropped sharply. The remaining errors are mostly same-gender confusions, so a stronger speaker cue is the next lever, not more separation capacity alone.
+* **Training stopped early.** The fine-tune was still improving slowly at epoch 25 (val mean 7.41 dB, its best), so the fixed budget limited it.
+* **R=6 from scratch is the best multi-speaker model.**
+  * Versus the fine-tune: +0.94 dB on 3 speakers and +0.94 dB on 4 speakers. Outputs below 5 dB fall from 22% to 18% on 3 speakers and from 30% to 24% on 4 speakers.
+  * It almost recovers 2-speaker quality: 9.49 vs 9.61 dB for the 2-spk-only model, and a higher median (11.11 vs 10.98).
+  * Its best validation score came at epoch 79 of 80, with the LR halved at epochs 55 and 63. It had not converged, so a longer schedule would likely add more.
+* **Caveat on the R=6 comparison:** it changes two things at once versus the fine-tune — depth (3 → 6 stages) and training regime (80 epochs from scratch vs 25 fine-tuning epochs on a 2-spk model). We have no R=3 run trained from scratch for 80 epochs on 2–4 speakers, so the gain cannot be attributed to depth alone.
+* **Wrong-target errors are unchanged across all three models:** NSR is about 8–9% on 3–4 speakers, and about 8–10% for same-gender mixtures. More separation capacity reduced leakage but not target confusion, so the next step should strengthen the speaker cue (e.g. a pretrained ECAPA embedding or a speaker-consistency loss on the output).
+* **Recommendation:** use `runs/multispk_deep_r6/best.pt` as the general 2–4 speaker model. Keep `saved_models/proposed_2spk_ep74` only if mixtures are known to have exactly 2 speakers and the lowest 2-speaker NSR matters (5.6% vs 7.5%).
+
+The listening demo for the fine-tuned model is in `demo_3spk_finetuned/index.html`. It uses 300 paired samples: the same Libri2Mix test sample, with and without an added third speaker.
+
+* 2 speakers: 8.95 dB SI-SDRi.
+* 3 speakers: 7.29 dB.
+* The original model scored 9.99 dB and 5.28 dB on the same protocol.
+* The R=6 model's demo is in `demo_3spk_deep_r6/index.html`: 9.74 dB on 2 speakers and 8.48 dB on 3 speakers.
+
 ## Deviations from the spec
 
 1. **The metadata paths are stale.** The LibriMix CSVs contain absolute paths from another

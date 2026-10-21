@@ -1,0 +1,17 @@
+# Same 2-4 speaker fine-tuning recipe as configs/finetune_multispk.yaml, applied to the
+# TD-SpeakerBeam baseline, so the multi-speaker comparison is fair.
+base: finetune_multispk.yaml
+name: finetune_multispk_baseline
+
+model:
+  type: tdspeakerbeam
+  P: 3
+  X: 8
+  R: 3
+  adapt_layer: 7
+
+loss:
+  lambda_int: 0.0   # the baseline has no interference branch
+
+train:
+  init_from: runs/baseline_tdspeakerbeam/best.pt
