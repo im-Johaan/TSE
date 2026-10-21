@@ -1,0 +1,16 @@
+# environment / caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+cache/
+splits/
+
+# large or regenerable outputs
+runs/
+generated/
+demo_3spk*/
+
+# saved models: keep best.pt + metadata, skip the 100 MB resume checkpoint and TB logs
+saved_models/**/last.pt
+saved_models/**/tb/

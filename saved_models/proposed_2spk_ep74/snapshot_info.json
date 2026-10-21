@@ -1,0 +1,25 @@
+{
+  "best.pt": {
+    "epoch": 74,
+    "val": {
+      "si_sdr": 10.102445911437274,
+      "si_sdri": 10.241079933729022,
+      "nsr": 0.042
+    },
+    "best_val_si_sdri": 10.241079933729022,
+    "sha256": "a26b3c1620f982def68edc998b557c78f436d6c3f5f720352451ce35687d71d1",
+    "n_params": 8724568
+  },
+  "last.pt": {
+    "epoch": 80,
+    "val": {
+      "si_sdr": 10.100872601628303,
+      "si_sdri": 10.239506623920054,
+      "nsr": 0.044
+    },
+    "best_val_si_sdri": 10.241079933729022,
+    "sha256": "c36537976e1f367d7cb02a4684b1613b0a07011ef7257396212a0a02653ccdb9",
+    "n_params": 8724568
+  },
+  "note": "U-eConv-TSE trained on Libri2Mix train-100 (2-speaker, 8k min clean). best.pt = epoch with best val SI-SDRi on 500 dev samples; last.pt = epoch 80 (training stopped during epoch 81). Read-only snapshot taken before multi-speaker fine-tuning."
+}

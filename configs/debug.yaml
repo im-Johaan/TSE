@@ -1,0 +1,22 @@
+# Tiny smoke-test config (CPU-friendly): small model, 64 training samples, 2 epochs.
+base: proposed.yaml
+name: debug
+
+data:
+  max_train_samples: 64
+  val_subset: 16
+
+model:
+  N: 64
+  B: 32
+  H: 64
+  Q: 2
+  R: 2
+  spk_dim: 32
+  spk_channels: [32, 64, 64]
+
+train:
+  batch_size: 4
+  max_epochs: 2
+  num_workers: 0
+  log_every: 4

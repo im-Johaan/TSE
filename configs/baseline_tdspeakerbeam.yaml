@@ -1,0 +1,16 @@
+# TD-SpeakerBeam baseline: same encoder/decoder, speaker encoder and training recipe as
+# the proposed model; Conv-TasNet separator (B=128, H=512, P=3, X=8, R=3) with
+# multiplicative adaptation after TCN block 7 (0-based, = end of the first repeat).
+base: proposed.yaml
+name: baseline_tdspeakerbeam
+
+model:
+  type: tdspeakerbeam
+  P: 3
+  X: 8
+  R: 3
+  adapt_layer: 7
+
+loss:
+  lambda_ce: 0.5
+  lambda_int: 0.0   # the baseline has no interference branch
