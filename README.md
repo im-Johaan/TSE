@@ -333,6 +333,27 @@ The listening demo for the fine-tuned model is in `demo_3spk_finetuned/index.htm
 * The original model scored 9.99 dB and 5.28 dB on the same protocol.
 * The R=6 model's demo is in `demo_3spk_deep_r6/index.html`: 9.74 dB on 2 speakers and 8.48 dB on 3 speakers.
 
+## Interactive web demo
+
+```bash
+python scripts/web_demo.py          # or scripts/run_web_demo.ps1; opens http://127.0.0.1:7860
+```
+
+How the demo works:
+
+* **Inputs:** for each of 2–4 speakers, upload a file (any format the browser can decode) or record from the microphone. The "Random speakers" button instead draws LibriSpeech test speakers, with an optional same-gender or mixed-gender constraint.
+* **Target and reference:** pick the target and give a reference clip of that person. The reference must be a different recording; random speakers come with a second utterance.
+* **Mixing:** each source is scaled to the same loudness and then shifted by its level slider (±10 dB). The sources are summed, either padded to the longest or cropped to the shortest.
+* **Extraction:** the chosen model extracts the target.
+* **Output:** the page plays the mixture, the extracted output and the clean target. It shows SI-SDR in, SI-SDR out and SI-SDRi, plus the output's SI-SDR against every speaker. That last score shows whether the model picked the wrong person.
+
+Implementation:
+
+* The server uses only the Python standard library and binds to localhost.
+* The browser resamples audio to 8 kHz mono before sending it.
+* Recordings are limited to 60 s each.
+* The core logic is in `src/tse/demo_app.py` (tested in `tests/test_demo_app.py`), and the page is `webui/index.html`.
+
 ## Deviations from the spec
 
 1. **The metadata paths are stale.** The LibriMix CSVs contain absolute paths from another
