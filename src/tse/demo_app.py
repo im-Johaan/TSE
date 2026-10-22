@@ -10,6 +10,7 @@ utterance as the reference) so the demo also works without any recordings.
 
 from __future__ import annotations
 
+import csv
 import logging
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,24 @@ class SpeakerPool:
         self.speakers = sorted(s for s, utts in self.pool.items() if len(utts) >= 2)
         log.info("Demo pool: %d speakers from %s/%s", len(self.speakers), self.root, split)
 
+    @classmethod
+    def from_demo_pack(cls, folder: str | Path) -> "SpeakerPool":
+        """Pool from a demo pack (``speakers.csv`` + clips, see scripts/make_demo_pack.py)."""
+        folder = Path(folder)
+        self = cls.__new__(cls)
+        self.root = folder
+        self.pool, self.genders = {}, {}
+        with open(folder / "speakers.csv", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                self.pool.setdefault(row["speaker"], []).append(
+                    (row["utt"], row["path"], int(row["length"])))
+                self.genders[row["speaker"]] = row["gender"]
+        self.speakers = sorted(s for s, utts in self.pool.items() if len(utts) >= 2)
+        if len(self.speakers) < 4:
+            raise ValueError(f"{folder}: need at least 4 speakers with 2+ clips")
+        log.info("Demo pool: %d speakers from the demo pack %s", len(self.speakers), folder)
+        return self
+
     def random_speakers(self, n: int, rng: np.random.Generator,
                         gender_mode: str = "any") -> list[dict[str, Any]]:
         """``n`` distinct speakers, each with one utterance and a different reference
@@ -130,3 +149,18 @@ class SpeakerPool:
                 "ref_utt": ref_utt, "ref_audio": read_audio(self.root / ref_path),
             })
         return out
+
+
+def load_speaker_pool(data_cfg: dict[str, Any], split: str = "test",
+                      demo_pack: str | Path | None = None) -> SpeakerPool | None:
+    """The split's speakers if the dataset is present, else the bundled demo pack, else None."""
+    try:
+        return SpeakerPool(data_cfg, split)
+    except (FileNotFoundError, OSError, KeyError, ValueError) as e:
+        log.info("Dataset not available for random speakers (%s); trying the demo pack", e)
+    pack = Path(demo_pack) if demo_pack else Path(__file__).resolve().parents[2] / "demo_assets"
+    try:
+        return SpeakerPool.from_demo_pack(pack)
+    except (FileNotFoundError, OSError, KeyError, ValueError) as e:
+        log.warning("Random test speakers disabled: no dataset and no demo pack (%s)", e)
+        return None

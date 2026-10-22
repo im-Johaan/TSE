@@ -7,7 +7,7 @@ models:
   label: R=6, trained on 2-4 speakers
   backend: ueconv
   checkpoint: saved_models/multispk_r6_ep79/best.pt
-  metrics_dir: runs/multispk_deep_r6
+  # test metrics are read from the checkpoint folder
   notes: Best model so far (2026-10-22). Trained from scratch, 80 epochs, dynamic 2-4 speaker mixing.
 - id: r3_finetune_multispk
   label: R=3, fine-tuned on 2-4 speakers

@@ -1,0 +1,10 @@
+# Packages needed to run the demos (scripts/serve.py) on a machine without the dataset.
+# Install PyTorch first with the build that matches the GPU (setup_and_run.ps1 does this),
+# e.g. pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+# Training/evaluation need requirements.txt instead.
+numpy>=1.26
+pandas>=2.0
+soundfile>=0.12
+pyyaml>=6.0
+fastapi>=0.110
+uvicorn[standard]>=0.29

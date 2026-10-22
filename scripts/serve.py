@@ -39,7 +39,7 @@ from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from tse.config import PROJECT_ROOT, load_config, resolve_paths  # noqa: E402
-from tse.demo_app import SpeakerPool  # noqa: E402
+from tse.demo_app import SpeakerPool, load_speaker_pool  # noqa: E402
 from tse.serving import ModelRegistry  # noqa: E402
 from tse.serving.registry import DEFAULT_REGISTRY  # noqa: E402
 from tse.serving.sessions import DemoState, Session, dispatch  # noqa: E402
@@ -178,11 +178,8 @@ def main() -> None:
     registry = ModelRegistry(args.registry, resolve_device(args.device))
     if not registry.available():
         raise SystemExit(f"no model in {args.registry} has an existing checkpoint")
-    pool = None
-    try:
-        pool = SpeakerPool(resolve_paths(load_config(args.config), args.data_root)["data"], args.split)
-    except (FileNotFoundError, OSError, KeyError, ValueError) as e:
-        log.warning("Random test speakers disabled: %s", e)
+    pool = load_speaker_pool(resolve_paths(load_config(args.config), args.data_root)["data"],
+                             args.split)
     app = create_app(registry, pool, args.passcode, args.allow_origin, args.max_live)
     log.info("Models: %s | passcode %s | origins %s", ", ".join(m["id"] for m in registry.available()),
              "on" if args.passcode else "off", args.allow_origin or ["*"])
