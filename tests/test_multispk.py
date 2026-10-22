@@ -93,3 +93,63 @@ def test_finetune_config_loads() -> None:
     assert cfg["train"]["init_from"].endswith("best.pt")
     assert [v["name"] for v in cfg["data"]["extra_val_sets"]] == ["3spk", "4spk"]
     assert all(v["root"].startswith(str(PROJECT_ROOT)) for v in cfg["data"]["extra_val_sets"])
+
+
+def test_dynamic_mix_individual_interferers_and_hard_pairs(fake_librimix) -> None:
+    ds0, data = _dm_dataset(fake_librimix)
+    spks = sorted(data.pools["train"])
+    similar = {s: [spks[(i + 1) % len(spks)]] * 3 for i, s in enumerate(spks)}  # 1 "similar" speaker
+    ds, _ = _dm_dataset(fake_librimix, n_spk_probs=[1.0, 0.0, 0.0], similar_speakers=similar,
+                        hard_pair_prob=1.0)
+    torch.manual_seed(0)
+    for i in range(len(ds)):
+        item = ds[i]
+        k = item["n_interferers"]
+        assert item["interferers"].shape == (3, 4000)
+        assert torch.allclose(item["interferers"].sum(0), item["interference"], atol=1e-5)
+        assert float(item["interferers"][k:].abs().sum()) == 0.0
+        if k:
+            intf = item["meta"]["mixture_id"][3:].split("_")[1].split("-")[0]
+            assert intf == similar[item["meta"]["speaker_id"]][0]
+        assert item["meta"]["hard_pair"]
+    try:
+        _dm_dataset(fake_librimix, hard_pair_prob=0.5)
+        raise AssertionError("hard_pair_prob without similar_speakers must fail")
+    except ValueError:
+        pass
+
+
+class _ToyJudge(torch.nn.Module):
+    """Stands in for FrozenECAPA: the embedding is a fixed projection of the waveform."""
+
+    def __init__(self, T: int) -> None:
+        super().__init__()
+        self.register_buffer("W", torch.randn(T, 16, generator=torch.Generator().manual_seed(0)))
+
+    def ecapa_embedding(self, wav: torch.Tensor, grad: bool = False) -> torch.Tensor:
+        return wav @ self.W if grad else (wav @ self.W).detach()
+
+
+def test_judge_loss_prefers_target_and_masks_padding() -> None:
+    from tse.losses import TSELoss, judge_loss
+
+    g = torch.Generator().manual_seed(1)
+    T = 400
+    tgt = torch.randn(4, T, generator=g)
+    intf = torch.randn(4, 3, T, generator=g)
+    n = torch.tensor([1, 2, 3, 1])
+    intf[0, 1:] = 0
+    intf[1, 2:] = 0
+    intf[3, 1:] = 0
+    judge = _ToyJudge(T)
+    good, acc_good = judge_loss(judge, tgt.clone(), tgt, intf, n)
+    bad, acc_bad = judge_loss(judge, intf[:, 0].clone(), tgt, intf, n)
+    assert good < bad and acc_good == 1.0 and acc_bad == 0.0
+    assert torch.isfinite(good) and torch.isfinite(bad)  # padded rows are masked, not NaN
+    est = intf[:, 0].clone().requires_grad_(True)
+    loss_fn = TSELoss(lambda_ce=0.0, lambda_int=0.0, lambda_judge=1.0, judge=judge)
+    res = loss_fn({"est": est, "spk_logits": None, "interference": None},
+                  {"target": tgt, "speaker_label": torch.full((4,), -1), "interferers": intf,
+                   "n_interferers": n})
+    res["total"].backward()
+    assert est.grad is not None and "judge" in res and "judge_acc" in res

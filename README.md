@@ -333,13 +333,19 @@ The listening demo for the fine-tuned model is in `demo_3spk_finetuned/index.htm
 * The original model scored 9.99 dB and 5.28 dB on the same protocol.
 * The R=6 model's demo is in `demo_3spk_deep_r6/index.html`: 9.74 dB on 2 speakers and 8.48 dB on 3 speakers.
 
-### Experiment in progress: frozen ECAPA speaker encoder
+### ECAPA experiments (2026-10-22)
 
-This experiment targets the main remaining error: wrong-speaker extraction on similar voices.
+The goal is to fix the main remaining error: wrong-speaker extraction when voices are similar. On 2 speakers, the R=6 model's NSR is 7.0% for the least similar fifth of target/interferer pairs and 10.2% for the most similar fifth (`scripts/similarity_breakdown.py`).
 
-* **The model:** `experiments/ecapa_frozen/` trains the same R=6 model with only the speaker encoder replaced by a frozen pretrained ECAPA-TDNN. Everything else is the same, from scratch for 80 epochs.
-* **Motivation:** ECAPA has 2.0% speaker-verification EER on the unseen test speakers, against 6.1% for the jointly trained ResNet.
-* **Status:** the results are not in yet. See `experiments/ecapa_frozen/README.md`.
+1. **ECAPA as the speaker encoder: stopped.** This was `experiments/ecapa_frozen/`: the R=6 model with a frozen ECAPA instead of the ResNet, trained from scratch.
+   * After 12 epochs, val SI-SDRi was 2.27 dB with a 29% wrong-speaker rate. The ResNet run had 5.64 dB and 8% at the same point.
+   * The train/val gap was 4.4 dB, against 1.9 dB for the ResNet run. The separator memorised the 251 very distinct training-speaker embeddings instead of learning to follow an unseen voice.
+   * Logs are kept in `experiments/ecapa_frozen/r6_ecapa_input_stopped_ep12/`.
+2. **ECAPA as a judge (running).** This is `experiments/ecapa_judge/`. Both arms fine-tune the saved R=6 model for 25 epochs at lr 2.5e-4, with *hard-pair mixing*: half of the mixtures take their interferers from the target's 20 most similar-sounding training speakers.
+   * **control:** no other change.
+   * **judge:** adds `loss.lambda_judge: 0.5`. A frozen ECAPA embeds the output, and an InfoNCE loss over cosine similarities rewards outputs that sound like the clean target and unlike each interferer.
+
+   ECAPA is used only in the loss, so the model architecture, checkpoints and inference are unchanged.
 
 ## Interactive web demo
 
