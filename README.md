@@ -38,6 +38,24 @@ Options:
 * `-Cuda cu126|cpu` picks the PyTorch build.
 * `-Port`, `-Passcode` and `-NoBrowser` configure the server.
 
+**What you get:**
+
+* **Overview** (`index.html`): the problem, an architecture diagram and the measured results.
+* **Mixer** (`mixer.html`): give 2–4 speakers (upload, record or "Random speakers"), pick the target and a reference clip. It mixes them, extracts the target and scores the result against every speaker.
+* **Live** (`live.html`): real-time extraction from the microphone, a file, or a random 2–4 speaker "Test mixture" played at real-time speed. You can switch models while it runs.
+* **Models:** the R=6 model (the default) and the original 2-speaker R=3 model come with the repo.
+* **Test clips:** "Random speakers" / "Test mixture" use `demo_assets/`, 48 clips of 16 LibriSpeech test speakers that the models never heard in training.
+
+**Tips for a live demo:**
+
+* **Before the day:** run `START_DEMO.bat` once at home, on good Wi-Fi. The PyTorch download (about 3 GB) only happens the first time, so on the day the demo starts in seconds.
+* **Folder:** keep the project in a short path such as `C:\TSE`. The script stops with an explanation if the path is too long for PyTorch.
+* **Browser:** use Chrome or Edge. The Live page runs its audio at 8 kHz, which Firefox does not support.
+* **Most convincing demo:** the Live page in "Test mixture" mode with 3 speakers, and the clean target played for comparison. Use the microphone only with headphones; otherwise the output feeds back into it.
+* **If the self-test warns that live mode may stutter:** pick a 500 ms hop on the Live page, or the smaller R=3 model.
+* **Expectations:** live microphones in a room (echo, fans, laptop mics) sound worse than the test mixtures. The models were trained on clean read speech at 8 kHz, and the output has telephone bandwidth.
+* **Stopping:** close the server window or press Ctrl+C.
+
 ## Setup
 
 ```bash
