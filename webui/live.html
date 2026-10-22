@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TSE Live</title>
+<script src="config.js"></script>
+<script src="common.js"></script>
 <style>
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --border: #dfe3e8;
@@ -74,10 +76,14 @@ label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; 
 .note { font-size: 13px; color: var(--muted); margin: 0; }
 .warnbox { background: var(--bad-bg); color: var(--bad); border-radius: 8px; padding: 8px 12px; font-size: 13px; display: none; }
 .hidden { display: none !important; }
+.topnav { display: flex; gap: 16px; align-items: center; font-size: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.topnav a { color: var(--accent); text-decoration: none; }
+.topnav .srv { margin-left: auto; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
 <main>
+  <nav class="topnav"><a href="index.html">← Overview</a><a href="mixer.html">Mixer</a><a href="live.html">Live</a><span class="srv" id="srvLabel"></span></nav>
   <h1>Live target speaker extraction</h1>
   <p class="lead">Give a reference recording of the person you want to hear, then stream audio in.
     The model keeps only that voice, live. Use headphones with the microphone, or the output feeds back into it.</p>
@@ -253,10 +259,18 @@ function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj))
 
 // ---------- websocket ----------
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws`);
+  $("#srvLabel").textContent = "server: " + TSE.serverLabel();
+  ws = new WebSocket(TSE.wsUrl("/ws"));
   ws.binaryType = "arraybuffer";
   ws.onopen = () => send({ type: "hello" });
-  ws.onclose = () => { setStatus("Disconnected from the server. Reload the page after restarting it.", true); stopAudio(); };
+  ws.onclose = e => {
+    if (running) stop();
+    stopAudio();
+    if (e.code === 4401) { if (TSE.askCode()) { connect(); return; } setStatus("This server needs a passcode.", true); return; }
+    if (e.code === 4403) { setStatus("This server does not accept connections from this website.", true); return; }
+    if (e.code === 4429) return;  // "busy" message already shown
+    setStatus("Disconnected from the server. Reload the page to reconnect.", true);
+  };
   ws.onmessage = e => {
     if (e.data instanceof ArrayBuffer) { onOutput(new Float32Array(e.data)); return; }
     const m = JSON.parse(e.data);

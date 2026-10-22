@@ -17,11 +17,9 @@ Example:
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import logging
 import sys
-import time
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,103 +29,20 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import numpy as np  # noqa: E402
 
 from tse.config import PROJECT_ROOT, load_config, resolve_paths  # noqa: E402
-from tse.demo_app import SpeakerPool, mix_sources, score_extraction  # noqa: E402
+from tse.demo_app import SpeakerPool  # noqa: E402
 from tse.serving import ModelRegistry  # noqa: E402
 from tse.serving.registry import DEFAULT_REGISTRY  # noqa: E402
+from tse.serving.sessions import DemoState, b64_to_f32, f32_to_b64  # noqa: E402,F401
 from tse.utils import resolve_device, setup_logging  # noqa: E402
 
 log = logging.getLogger("web_demo")
 
-PAGE = PROJECT_ROOT / "webui" / "index.html"
-MAX_SECONDS = 60.0
+PAGE = PROJECT_ROOT / "webui" / "mixer.html"
 MAX_BODY_BYTES = 64 * 1024 * 1024
-
-
-def b64_to_f32(s: str) -> np.ndarray:
-    """Decode a base64 string of little-endian float32 samples."""
-    x = np.frombuffer(base64.b64decode(s), dtype="<f4").astype(np.float32)
-    if not np.isfinite(x).all():
-        raise ValueError("audio contains NaN/Inf")
-    return x
-
-
-def f32_to_b64(x: np.ndarray) -> str:
-    """Encode samples as base64 little-endian float32."""
-    return base64.b64encode(np.ascontiguousarray(x, dtype="<f4").tobytes()).decode("ascii")
-
-
-class DemoState:
-    """Models, data pool and settings shared by all requests."""
-
-    def __init__(self, registry: ModelRegistry, pool: SpeakerPool | None) -> None:
-        self.registry = registry
-        self.pool = pool
-        self.sample_rate = registry.get().sample_rate  # also preloads the default model
-        self.rng = np.random.default_rng()
-
-    def info(self) -> dict[str, Any]:
-        return {
-            "sample_rate": self.sample_rate,
-            "max_seconds": MAX_SECONDS,
-            "models": [{"id": m["id"], "label": m["label"] + (" (default)" if m["default"] else "")}
-                       for m in self.registry.available()],
-            "random_available": self.pool is not None,
-            "device": str(self.registry.device),
-        }
-
-    def random(self, n: int, gender_mode: str) -> dict[str, Any]:
-        if self.pool is None:
-            raise ValueError("random test speakers are unavailable (dataset not found)")
-        if not 2 <= n <= 4:
-            raise ValueError("n must be 2-4")
-        spk = self.pool.random_speakers(n, self.rng, gender_mode)
-        return {"speakers": [{
-            "speaker": s["speaker"], "gender": s["gender"], "utt": s["utt"],
-            "ref_utt": s["ref_utt"], "audio": f32_to_b64(s["audio"]),
-            "ref_audio": f32_to_b64(s["ref_audio"]),
-        } for s in spk]}
-
-    def separate(self, req: dict[str, Any]) -> dict[str, Any]:
-        sources = [b64_to_f32(s) for s in req["sources"]]
-        if not 2 <= len(sources) <= 4:
-            raise ValueError("give 2-4 speakers")
-        target = int(req["target"])
-        if not 0 <= target < len(sources):
-            raise ValueError("target index out of range")
-        enrollment = b64_to_f32(req["enrollment"])
-        if len(enrollment) < self.sample_rate // 2:
-            raise ValueError("the reference clip must be at least 0.5 s long")
-        gains = [float(g) for g in req.get("gains_db", [0.0] * len(sources))]
-        model_id = req.get("model") or self.registry.default_id
-        if model_id not in self.registry.entries:
-            raise ValueError(f"unknown model {model_id!r}")
-        backend = self.registry.get(model_id)
-        if backend.sample_rate != self.sample_rate:
-            raise ValueError("this model uses a different sample rate than the page")
-        limit = int(MAX_SECONDS * self.sample_rate)
-        if max(len(s) for s in sources) > limit:
-            raise ValueError(f"each recording must be at most {MAX_SECONDS:.0f} s")
-        mixture, scaled = mix_sources(sources, gains, req.get("length_mode", "longest"))
-        t0 = time.perf_counter()
-        est = backend.extract(mixture, backend.enroll(enrollment))
-        elapsed = time.perf_counter() - t0
-        scores = score_extraction(est, scaled, mixture, target)
-        peak = float(np.abs(est).max())
-        est_play = est / peak * 0.9 if peak > 0 else est  # SI-SDR output scale is arbitrary
-        log.info("separate: %d speakers, %.1f s, model %s, target %d -> SI-SDRi %.2f dB (%.0f ms)",
-                 len(sources), len(mixture) / self.sample_rate, model_id, target,
-                 scores["si_sdri"], elapsed * 1e3)
-        return {
-            "mixture": f32_to_b64(mixture),
-            "estimate": f32_to_b64(est_play),
-            "target": f32_to_b64(scaled[target]),
-            "seconds": len(mixture) / self.sample_rate,
-            "inference_ms": elapsed * 1e3,
-            **scores,
-        }
+STATIC = {f.name: ("application/javascript" if f.suffix == ".js" else "text/html; charset=utf-8")
+          for f in PAGE.parent.iterdir() if f.suffix in (".js", ".html")}
 
 
 def make_handler(state: DemoState) -> type[BaseHTTPRequestHandler]:
@@ -151,8 +66,11 @@ def make_handler(state: DemoState) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:  # noqa: N802 (http.server API)
             url = urlparse(self.path)
+            name = url.path.lstrip("/")
             if url.path in ("/", "/index.html"):
                 self._send(HTTPStatus.OK, PAGE.read_bytes(), "text/html; charset=utf-8")
+            elif name in STATIC:  # shared page assets (config.js, common.js, other pages)
+                self._send(HTTPStatus.OK, (PAGE.parent / name).read_bytes(), STATIC[name])
             elif url.path == "/api/info":
                 self._json(state.info())
             elif url.path == "/api/random":

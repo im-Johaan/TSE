@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSE Mixer</title>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --border: #dfe3e8;
+  --text: #1b1f24; --muted: #5d6673; --accent: #2f6fde; --accent-text: #ffffff;
+  --good: #1f8a4c; --good-bg: #e7f5ec; --bad: #b4441c; --bad-bg: #fbeee8;
+  --wave: #8a94a3;
+  --s0: #2f6fde; --s1: #d9731f; --s2: #189a74; --s3: #8a55d6;
+  --radius: 10px; --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --panel: #191d23; --panel-2: #20252c; --border: #2d333c;
+    --text: #e6e9ed; --muted: #9aa3ae; --accent: #5b8ff0; --accent-text: #0d1117;
+    --good: #4cc282; --good-bg: #16291f; --bad: #f08a5d; --bad-bg: #2e1d16;
+    --wave: #6b7480;
+    --s0: #5b8ff0; --s1: #f0954a; --s2: #3cc49a; --s3: #ab82ef;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --panel: #191d23; --panel-2: #20252c; --border: #2d333c;
+  --text: #e6e9ed; --muted: #9aa3ae; --accent: #5b8ff0; --accent-text: #0d1117;
+  --good: #4cc282; --good-bg: #16291f; --bad: #f08a5d; --bad-bg: #2e1d16;
+  --wave: #6b7480;
+  --s0: #5b8ff0; --s1: #f0954a; --s2: #3cc49a; --s3: #ab82ef;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0; }
+p.lead { margin: 0 0 20px; color: var(--muted); max-width: 70ch; }
+.panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px;
+}
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; margin-bottom: 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+select, button, input[type=range] { font: inherit; color: inherit; }
+select {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 10px; min-width: 0; max-width: 100%;
+}
+button {
+  border: 1px solid var(--border); background: var(--panel); border-radius: 8px;
+  padding: 7px 12px; cursor: pointer; white-space: nowrap;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button.small { padding: 4px 9px; font-size: 13px; }
+button.rec { color: var(--bad); }
+button.rec.on { background: var(--bad); color: #fff; border-color: var(--bad); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid var(--border); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-text); }
+
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); }
+.card { border-top: 4px solid var(--c); display: flex; flex-direction: column; gap: 12px; }
+.card.target { outline: 2px solid var(--c); outline-offset: -1px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card-head h2 { display: flex; align-items: center; gap: 8px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+.meta { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.target-toggle {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
+}
+.card.target .target-toggle { background: var(--c); border-color: var(--c); color: #fff; font-weight: 600; }
+.target-toggle input { margin: 0; accent-color: var(--c); }
+.block { background: var(--panel-2); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.block-title { font-size: 12px; font-weight: 600; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+audio { width: 100%; height: 36px; }
+.empty { font-size: 13px; color: var(--muted); font-style: italic; }
+.gain { display: grid; grid-template-columns: auto 1fr 52px; gap: 8px; align-items: center; font-size: 13px; }
+.gain input { width: 100%; accent-color: var(--c); }
+.gain output { text-align: right; font-variant-numeric: tabular-nums; }
+.card:not(.target) .ref-block { opacity: .72; }
+
+.runbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 18px 0; }
+.runbar button.primary { padding: 10px 20px; font-size: 16px; }
+#status { color: var(--muted); font-size: 14px; }
+#status.err { color: var(--bad); }
+
+#results { display: none; flex-direction: column; gap: 16px; }
+.verdict { border-radius: 8px; padding: 10px 14px; font-weight: 600; }
+.verdict.ok { background: var(--good-bg); color: var(--good); }
+.verdict.bad { background: var(--bad-bg); color: var(--bad); }
+.tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.tile { background: var(--panel-2); border-radius: 8px; padding: 10px 12px; }
+.tile .k { font-size: 12px; color: var(--muted); font-weight: 600; }
+.tile .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.tracks { display: flex; flex-direction: column; gap: 12px; }
+.track { display: grid; grid-template-columns: 170px 1fr; gap: 6px 14px; align-items: center; }
+.track .label { font-weight: 600; font-size: 14px; }
+.track .label small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.track canvas { width: 100%; height: 56px; display: block; background: var(--panel-2); border-radius: 6px; }
+.track .controls { grid-column: 2; display: flex; gap: 8px; align-items: center; }
+.track .controls audio { flex: 1; }
+.track .controls a { font-size: 13px; color: var(--accent); white-space: nowrap; }
+.bars { display: flex; flex-direction: column; gap: 6px; }
+.bar { display: grid; grid-template-columns: 120px 1fr 72px; gap: 10px; align-items: center; font-size: 13px; }
+.bar .track-bg { background: var(--panel-2); height: 14px; border-radius: 4px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--c); border-radius: 4px; }
+.bar .val { text-align: right; font-variant-numeric: tabular-nums; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+@media (max-width: 640px) {
+  .track { grid-template-columns: 1fr; }
+  .track .controls { grid-column: 1; }
+  .bar { grid-template-columns: 90px 1fr 64px; }
+}
+.topnav { display: flex; gap: 16px; align-items: center; font-size: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.topnav a { color: var(--accent); text-decoration: none; }
+.topnav .srv { margin-left: auto; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <nav class="topnav"><a href="index.html">← Overview</a><a href="mixer.html">Mixer</a><a href="live.html">Live</a><span class="srv" id="srvLabel"></span></nav>
+  <h1>Target speaker extraction</h1>
+  <p class="lead">Give each speaker a separate recording, pick the target and give a reference clip of
+    that person. The app mixes the speakers, extracts the target with the model, and scores the
+    result against every speaker.</p>
+
+  <div class="panel toolbar">
+    <label class="field"><span>Model</span><select id="model"></select></label>
+    <div class="field"><span>Speakers</span>
+      <div class="seg" id="count">
+        <button data-n="2">2</button><button data-n="3" aria-pressed="true">3</button><button data-n="4">4</button>
+      </div>
+    </div>
+    <label class="field"><span>Mixture length</span>
+      <select id="lengthMode">
+        <option value="longest">Longest (pad shorter with silence)</option>
+        <option value="shortest">Shortest (crop, like LibriMix)</option>
+      </select>
+    </label>
+    <div class="field" id="randomField"><span>Fill from LibriSpeech test set</span>
+      <div class="row">
+        <select id="genderMode">
+          <option value="any">Any genders</option>
+          <option value="same">All same gender (hard)</option>
+          <option value="mixed">Mixed genders</option>
+        </select>
+        <button id="randomBtn">Random speakers</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="runbar">
+    <button class="primary" id="runBtn" disabled>Mix &amp; extract target</button>
+    <span id="status">Add a recording for every speaker and a reference clip for the target.</span>
+  </div>
+
+  <section class="panel" id="results" aria-live="polite">
+    <div class="verdict" id="verdict"></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="tracks" id="tracks"></div>
+    <div>
+      <h2 style="margin-bottom:8px">Which speaker does the output sound like?</h2>
+      <div class="bars" id="bars"></div>
+    </div>
+    <p class="note">SI-SDR in dB, higher is better. Roughly: above 10 dB is clean, 5–10 dB has
+      audible leakage from the other voices, below 0 dB means the extraction failed or picked the
+      wrong person. Improvement = output SI-SDR − input (mixture) SI-SDR.</p>
+  </section>
+</main>
+
+<script>
+"use strict";
+const NAMES = ["A", "B", "C", "D"];
+let SR = 8000, MAX_S = 60;
+const state = {
+  n: 3, target: 0,
+  speakers: NAMES.map((name, i) => ({ name, i, audio: null, ref: null, gain: 0, label: "", refLabel: "" })),
+};
+const $ = (s, el = document) => el.querySelector(s);
+
+// ---------- audio helpers ----------
+async function decodeToModelRate(arrayBuffer) {
+  const ctx = new AudioContext();
+  let buf;
+  try { buf = await ctx.decodeAudioData(arrayBuffer); } finally { ctx.close(); }
+  const len = Math.max(1, Math.ceil(buf.duration * SR));
+  const off = new OfflineAudioContext(1, len, SR);  // 1 channel: browser downmixes to mono
+  const src = off.createBufferSource();
+  src.buffer = buf; src.connect(off.destination); src.start();
+  const out = await off.startRendering();
+  let x = out.getChannelData(0).slice();
+  if (x.length > MAX_S * SR) { x = x.slice(0, MAX_S * SR); setStatus(`Trimmed to the first ${MAX_S} s.`); }
+  return x;
+}
+function wavUrl(x) {
+  const n = x.length, buf = new ArrayBuffer(44 + 2 * n), v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + 2 * n, true); w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, SR, true); v.setUint32(28, 2 * SR, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, 2 * n, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + 2 * i, Math.max(-1, Math.min(1, x[i])) * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+function f32ToB64(x) {
+  const u8 = new Uint8Array(x.buffer, x.byteOffset, x.byteLength);
+  let s = "";
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64ToF32(b64) {
+  const s = atob(b64), u8 = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+  return new Float32Array(u8.buffer);
+}
+const secs = x => (x.length / SR).toFixed(1) + " s";
+
+// ---------- recording ----------
+let recorder = null, recTarget = null;
+async function toggleRecord(spk, kind) {
+  if (recorder) {  // stop the current recording (whichever button started it)
+    recorder.stop();
+    return;
+  }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { setStatus("Microphone unavailable: " + e.message, true); return; }
+  const chunks = [];
+  recorder = new MediaRecorder(stream);
+  recTarget = { spk, kind };
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    recorder = null;
+    try {
+      const x = await decodeToModelRate(await new Blob(chunks).arrayBuffer());
+      setAudio(recTarget.spk, recTarget.kind, x, "microphone recording");
+    } catch (e) { setStatus("Could not decode the recording: " + e.message, true); }
+    render();
+  };
+  recorder.start();
+  render();
+  setStatus("Recording… press Stop when done.");
+}
+
+function setAudio(spk, kind, x, label) {
+  if (kind === "audio") { spk.audio = x; spk.label = label; }
+  else { spk.ref = x; spk.refLabel = label; }
+}
+
+// ---------- rendering ----------
+function audioBlock(spk, kind) {
+  const x = kind === "audio" ? spk.audio : spk.ref;
+  const label = kind === "audio" ? spk.label : spk.refLabel;
+  const isRec = recorder && recTarget && recTarget.spk === spk && recTarget.kind === kind;
+  const el = document.createElement("div");
+  el.className = "block" + (kind === "ref" ? " ref-block" : "");
+  const title = kind === "audio" ? "Speech (goes into the mixture)"
+    : "Reference clip " + (state.target === spk.i ? "(required: a different recording of this person)" : "(only needed if this is the target)");
+  el.innerHTML = `<div class="block-title"><span>${title}</span><span>${x ? secs(x) : ""}</span></div>
+    <div class="row">
+      <button class="small up">Upload</button>
+      <button class="small rec${isRec ? " on" : ""}" ${recorder && !isRec ? "disabled" : ""}>${isRec ? "■ Stop" : "● Record"}</button>
+      ${x ? '<button class="small clr">Clear</button>' : ""}
+      <input type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg,.webm" hidden>
+    </div>
+    ${x ? `<div class="meta">${escapeHtml(label)}</div><audio controls preload="none" src="${wavUrl(x)}"></audio>`
+        : '<div class="empty">No audio yet</div>'}`;
+  const file = $("input", el);
+  $(".up", el).onclick = () => file.click();
+  file.onchange = async () => {
+    const f = file.files[0]; if (!f) return;
+    try { setAudio(spk, kind, await decodeToModelRate(await f.arrayBuffer()), f.name); setStatus(""); }
+    catch (e) { setStatus(`Could not decode ${f.name}: ${e.message}`, true); }
+    render();
+  };
+  $(".rec", el).onclick = () => toggleRecord(spk, kind);
+  const clr = $(".clr", el);
+  if (clr) clr.onclick = () => { setAudio(spk, kind, null, ""); render(); };
+  return el;
+}
+
+function render() {
+  const cards = $("#cards");
+  cards.innerHTML = "";
+  if (state.target >= state.n) state.target = 0;
+  for (const spk of state.speakers.slice(0, state.n)) {
+    const card = document.createElement("div");
+    card.className = "panel card" + (state.target === spk.i ? " target" : "");
+    card.style.setProperty("--c", `var(--s${spk.i})`);
+    card.innerHTML = `<div class="card-head">
+        <h2><span class="dot"></span>Speaker ${spk.name}</h2>
+        <label class="target-toggle"><input type="radio" name="target" ${state.target === spk.i ? "checked" : ""}> Target</label>
+      </div>
+      <div class="gain"><span>Level</span><input type="range" min="-10" max="10" step="1" value="${spk.gain}"><output>${spk.gain > 0 ? "+" : ""}${spk.gain} dB</output></div>`;
+    $("input[type=radio]", card).onchange = () => { state.target = spk.i; render(); };
+    const range = $("input[type=range]", card), out = $("output", card);
+    range.oninput = () => { spk.gain = +range.value; out.textContent = `${spk.gain > 0 ? "+" : ""}${spk.gain} dB`; };
+    card.appendChild(audioBlock(spk, "audio"));
+    card.appendChild(audioBlock(spk, "ref"));
+    cards.appendChild(card);
+  }
+  document.querySelectorAll("#count button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.n === state.n)));
+  const active = state.speakers.slice(0, state.n);
+  const ready = active.every(s => s.audio) && state.speakers[state.target].ref && !recorder;
+  $("#runBtn").disabled = !ready;
+}
+
+function setStatus(msg, err = false) { const s = $("#status"); s.textContent = msg; s.classList.toggle("err", err); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+function drawWave(canvas, x, color) {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext("2d"); g.scale(dpr, dpr); g.fillStyle = color;
+  let peak = 1e-6; for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
+  const step = x.length / w, mid = h / 2;
+  for (let px = 0; px < w; px++) {
+    let lo = 0, hi = 0;
+    const a = Math.floor(px * step), b = Math.min(x.length, Math.floor((px + 1) * step) + 1);
+    for (let i = a; i < b; i++) { if (x[i] < lo) lo = x[i]; if (x[i] > hi) hi = x[i]; }
+    const y0 = mid - (hi / peak) * (mid - 2), y1 = mid - (lo / peak) * (mid - 2);
+    g.fillRect(px, y0, 1, Math.max(1, y1 - y0));
+  }
+}
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function showResults(r) {
+  const n = state.n, t = state.target, names = state.speakers.slice(0, n).map(s => "Speaker " + s.name);
+  const ok = r.closest_source === t && r.si_sdri > 0;
+  const v = $("#verdict");
+  v.className = "verdict " + (ok ? "ok" : "bad");
+  v.textContent = ok ? `The output matches ${names[t]}, the target.`
+    : r.closest_source !== t ? `The output sounds most like ${names[r.closest_source]}, not the target (${names[t]}). The model picked the wrong person.`
+    : `The output is closest to the target, but it is worse than the unprocessed mixture.`;
+  const fix = x => (Math.abs(x) < 0.05 ? 0 : x).toFixed(1), f = x => (x >= 0.05 ? "+" : "") + fix(x);
+  $("#tiles").innerHTML = `
+    <div class="tile"><div class="k">Improvement (SI-SDRi)</div><div class="v">${f(r.si_sdri)} <small>dB</small></div></div>
+    <div class="tile"><div class="k">Output SI-SDR</div><div class="v">${fix(r.si_sdr_out)} <small>dB</small></div></div>
+    <div class="tile"><div class="k">Input (mixture) SI-SDR</div><div class="v">${fix(r.si_sdr_in)} <small>dB</small></div></div>
+    <div class="tile"><div class="k">Model time</div><div class="v">${r.inference_ms.toFixed(0)} <small>ms for ${r.seconds.toFixed(1)} s</small></div></div>`;
+  const tracks = [
+    ["Mixture", `${n} speakers, model input`, b64ToF32(r.mixture), cssVar("--wave"), "mixture.wav"],
+    ["Extracted output", `model output for ${names[t]}`, b64ToF32(r.estimate), cssVar(`--s${t}`), "extracted.wav"],
+    ["Clean target", "ground truth, for comparison", b64ToF32(r.target), cssVar("--muted"), "target_clean.wav"],
+  ];
+  const tr = $("#tracks"); tr.innerHTML = "";
+  for (const [label, sub, x, color, fname] of tracks) {
+    const url = wavUrl(x), el = document.createElement("div");
+    el.className = "track";
+    el.innerHTML = `<div class="label">${label}<small>${sub}</small></div><canvas></canvas>
+      <div class="controls"><audio controls src="${url}"></audio><a href="${url}" download="${fname}">Download</a></div>`;
+    tr.appendChild(el);
+    requestAnimationFrame(() => drawWave($("canvas", el), x, color));
+  }
+  const vals = r.si_sdr_vs_sources, lo = Math.min(-10, ...vals), hi = Math.max(20, ...vals);
+  $("#bars").innerHTML = vals.map((s, i) => `<div class="bar" style="--c: var(--s${i})">
+      <span>${names[i]}${i === t ? " <b>(target)</b>" : ""}</span>
+      <div class="track-bg"><div class="fill" style="width:${(100 * (s - lo) / (hi - lo)).toFixed(1)}%"></div></div>
+      <span class="val">${s.toFixed(1)} dB</span></div>`).join("");
+  $("#results").style.display = "flex";
+  $("#results").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ---------- actions ----------
+async function api(path, body) {
+  const res = await TSE.fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+$("#runBtn").onclick = async () => {
+  const active = state.speakers.slice(0, state.n);
+  $("#runBtn").disabled = true;
+  setStatus("Mixing and extracting…");
+  try {
+    const r = await api("/api/separate", {
+      sources: active.map(s => f32ToB64(s.audio)),
+      gains_db: active.map(s => s.gain),
+      target: state.target,
+      enrollment: f32ToB64(state.speakers[state.target].ref),
+      model: $("#model").value,
+      length_mode: $("#lengthMode").value,
+    });
+    setStatus("");
+    showResults(r);
+  } catch (e) { setStatus("Error: " + e.message, true); }
+  render();
+};
+
+$("#randomBtn").onclick = async () => {
+  $("#randomBtn").disabled = true;
+  setStatus("Loading random test speakers…");
+  try {
+    const r = await api(`/api/random?n=${state.n}&gender=${$("#genderMode").value}`);
+    r.speakers.forEach((s, i) => {
+      const spk = state.speakers[i], g = s.gender === "M" ? "male" : s.gender === "F" ? "female" : "?";
+      setAudio(spk, "audio", b64ToF32(s.audio), `LibriSpeech speaker ${s.speaker} (${g}), utterance ${s.utt}`);
+      setAudio(spk, "ref", b64ToF32(s.ref_audio), `same speaker, different utterance ${s.ref_utt}`);
+    });
+    setStatus("Loaded. Pick the target and press Mix & extract.");
+  } catch (e) { setStatus("Error: " + e.message, true); }
+  $("#randomBtn").disabled = false;
+  render();
+};
+
+document.querySelectorAll("#count button").forEach(b => b.onclick = () => { state.n = +b.dataset.n; render(); });
+
+(async () => {
+  $("#srvLabel").textContent = "server: " + TSE.serverLabel();
+  try {
+    const info = await api("/api/info");
+    SR = info.sample_rate; MAX_S = info.max_seconds;
+    $("#model").innerHTML = info.models.map(m => `<option value="${m.id}">${escapeHtml(m.label)}</option>`).join("");
+    if (!info.random_available) $("#randomField").style.display = "none";
+  } catch (e) { setStatus("Server not reachable: " + e.message, true); }
+  render();
+})();
+</script>
+</body>
+</html>

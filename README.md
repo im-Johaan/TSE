@@ -432,6 +432,19 @@ Limitations of the live demo:
 * The output has telephone bandwidth: nothing above 4 kHz.
 * Latency below about 150 ms would need a causal model trained for it. It would plug in as a new backend.
 
+## One-server deployment (scripts/serve.py)
+
+`scripts/serve.py` is a single FastAPI app that combines the clip mixer API, live streaming (`/ws`) and the pages (`webui/`: overview `index.html`, `mixer.html`, `live.html`) on one port.
+
+```bash
+pip install fastapi "uvicorn[standard]"
+python scripts/serve.py --port 8000 [--passcode CODE] [--allow-origin https://your.site]
+# then open http://127.0.0.1:8000
+```
+
+* **Static hosting:** the pages can also be served from a static host. They find the server through `webui/config.js` or `?api=https://...`, and the passcode through `?code=...`; both are remembered per browser.
+* **Public tunnel:** `scripts/run_public.ps1` adds a Cloudflare quick tunnel. It needs outbound port 7844, which some networks block (Cloudflare's tunnel edge is not reachable over 443).
+
 ## Deviations from the spec
 
 1. **The metadata paths are stale.** The LibriMix CSVs contain absolute paths from another
