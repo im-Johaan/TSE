@@ -154,10 +154,13 @@ class SpeakerPool:
 def load_speaker_pool(data_cfg: dict[str, Any], split: str = "test",
                       demo_pack: str | Path | None = None) -> SpeakerPool | None:
     """The split's speakers if the dataset is present, else the bundled demo pack, else None."""
-    try:
-        return SpeakerPool(data_cfg, split)
-    except (FileNotFoundError, OSError, KeyError, ValueError) as e:
-        log.info("Dataset not available for random speakers (%s); trying the demo pack", e)
+    if Path(data_cfg["root"]).is_dir():
+        try:
+            return SpeakerPool(data_cfg, split)
+        except (FileNotFoundError, OSError, KeyError, ValueError) as e:
+            log.info("Dataset not usable for random speakers (%s); trying the demo pack", e)
+    else:
+        log.info("No dataset at %s; using the demo pack for random speakers", data_cfg["root"])
     pack = Path(demo_pack) if demo_pack else Path(__file__).resolve().parents[2] / "demo_assets"
     try:
         return SpeakerPool.from_demo_pack(pack)

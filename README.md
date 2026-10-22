@@ -10,6 +10,34 @@ speaker's speech. There is no PIT anywhere.
 * **Baseline:** `TDSpeakerBeam`. A Conv-TasNet separator with multiplicative adaptation.
   It uses the same encoder, decoder, speaker encoder and training recipe as the proposed model.
 
+## Quick start: run the demo on a new Windows machine
+
+You only need Git, Python 3.10–3.13 and, ideally, an NVIDIA GPU (any RTX card works). The dataset is **not** needed: the trained models are in the repo, and `demo_assets/` holds a few MB of test-speaker clips.
+
+```powershell
+git clone https://github.com/im-Johaan/TSE.git C:\TSE     # a short path avoids Windows path-length limits
+cd C:\TSE
+.\START_DEMO.bat                                         # or: powershell -ExecutionPolicy Bypass -File setup_and_run.ps1
+```
+
+The script runs these steps and skips any that are already done. Run it again later to update and start the demo.
+
+1. `git pull`
+2. Find Python.
+3. Create `.venv`.
+4. Install PyTorch: the CUDA build if `nvidia-smi` finds a GPU, otherwise CPU (about a 3 GB download the first time).
+5. Install `requirements-demo.txt`.
+6. Run `scripts/self_test.py`, which checks the GPU, the models, extraction quality and live speed.
+7. Start `scripts/serve.py` and open http://127.0.0.1:8000 in Chrome or Edge.
+
+Options:
+
+* `-NoPull` skips the `git pull`.
+* `-SkipTest` skips the self-test.
+* `-Reinstall` recreates `.venv`.
+* `-Cuda cu126|cpu` picks the PyTorch build.
+* `-Port`, `-Passcode` and `-NoBrowser` configure the server.
+
 ## Setup
 
 ```bash

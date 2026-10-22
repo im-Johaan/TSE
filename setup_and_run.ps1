@@ -103,14 +103,14 @@ if ($hasTorch) {
         Info "installed PyTorch cannot use the GPU; reinstalling the CUDA build"
         $hasTorch = $false
     }
-    else { Ok ("already installed: " + (& $venvPy -c "import torch; print(torch.__version__)")) }
+    else { Ok ("already installed: " + (& $venvPy -W ignore -c "import torch; print(torch.__version__)")) }
 }
 if (-not $hasTorch) {
     $index = "https://download.pytorch.org/whl/$want"
     Info "installing torch + torchaudio ($want) from $index"
     if ($want -ne "cpu") { Info "this is a ~3 GB download; it can take a while" }
     Run $venvPy @("-m", "pip", "install", "--upgrade", "torch", "torchaudio", "--index-url", $index)
-    Ok ("installed: " + (& $venvPy -c "import torch; print(torch.__version__)"))
+    Ok ("installed: " + (& $venvPy -W ignore -c "import torch; print(torch.__version__)"))
 }
 
 # 5. packages -------------------------------------------------------------------------
