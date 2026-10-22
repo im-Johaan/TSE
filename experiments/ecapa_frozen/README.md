@@ -30,6 +30,19 @@ Parameters:
 * 10.1M are trainable.
 * For comparison, the ResNet model has 13.6M, all trainable.
 
+**First attempt, stopped after 3 epochs:** `r6_ecapa_unscaled_stopped/` (logs only). In that
+run the L2-normalised ECAPA embedding entered the projection with norm 1. That made the speaker
+embedding about 3.6x smaller at init than the ResNet's. FiLM weights are zero-initialised and
+their gradient is proportional to the embedding, so the speaker cue was learned very slowly.
+
+| | val SI-SDRi (mean 2/3/4 spk) | wrong-speaker rate |
+|---|---|---|
+| ECAPA, epochs 1–3 | 1.70 / 1.76 / 1.63 dB | 18% → 31% |
+| ResNet run, epochs 1–3 | 2.67 / 3.35 / 3.76 dB | about 10–12% |
+
+The fix scales the normalised embedding by sqrt(192), giving unit RMS per dimension. Training
+was restarted from scratch at 10:46 on 2026-10-22.
+
 **Run:** `powershell -ExecutionPolicy Bypass -File experiments\ecapa_frozen\run.ps1`. It is
 resumable, and outputs go to `experiments/ecapa_frozen/r6_ecapa/`. Compare against the
 ResNet model with:
