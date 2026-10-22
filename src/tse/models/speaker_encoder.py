@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .layers import GlobalLayerNorm, WaveEncoder
 
@@ -55,38 +58,61 @@ class ResNetSpeakerEncoder(nn.Module):
 class ECAPAFrozenSpeakerEncoder(nn.Module):
     """Frozen SpeechBrain ECAPA-TDNN (VoxCeleb, 16 kHz) + trainable Linear(192 -> spk_dim).
 
-    Input is resampled from ``sample_rate`` to 16 kHz. Requires ``speechbrain`` and
-    access to the pretrained model (downloaded on first use).
+    Input is resampled from ``sample_rate`` to 16 kHz. Requires ``speechbrain``; the
+    pretrained model is downloaded on first use into ``savedir`` (files are copied, not
+    symlinked, so it works on Windows without developer mode). Only the feature extractor,
+    input normalisation and embedding network are kept (not the VoxCeleb classifier). They
+    stay in eval mode and run in float32 without gradients; only ``proj`` is trained.
+    The embedding is L2-normalised before ``proj``.
     """
 
     def __init__(self, spk_dim: int, sample_rate: int = 8000,
-                 source: str = "speechbrain/spkrec-ecapa-voxceleb") -> None:
+                 source: str = "speechbrain/spkrec-ecapa-voxceleb",
+                 savedir: str | Path | None = None) -> None:
         super().__init__()
         try:
             from speechbrain.inference.speaker import EncoderClassifier
+            from speechbrain.utils.fetching import LocalStrategy
         except ImportError as err:
             raise ImportError(
                 "spk_encoder='ecapa_frozen' needs speechbrain (pip install speechbrain). "
                 "Use spk_encoder='resnet' otherwise.") from err
         import torchaudio
 
+        if savedir is None:
+            savedir = Path(__file__).resolve().parents[3] / "pretrained_models" / source.split("/")[-1]
+        ecapa = EncoderClassifier.from_hparams(source=source, savedir=str(savedir),
+                                               run_opts={"device": "cpu"},
+                                               local_strategy=LocalStrategy.COPY)
         self.resample = torchaudio.transforms.Resample(sample_rate, 16000)
-        ecapa = EncoderClassifier.from_hparams(source=source, run_opts={"device": "cpu"})
-        self.ecapa = ecapa.mods
         self.compute_features = ecapa.mods.compute_features
         self.norm = ecapa.mods.mean_var_norm
-        for p in self.ecapa.parameters():
-            p.requires_grad_(False)
+        self.embedding_model = ecapa.mods.embedding_model
+        for m in (self.compute_features, self.norm, self.embedding_model):
+            for p in m.parameters():
+                p.requires_grad_(False)
         self.proj = nn.Linear(192, spk_dim)
+        self.train(self.training)
 
-    def forward(self, enroll: torch.Tensor) -> torch.Tensor:
-        with torch.no_grad():
-            self.ecapa.eval()
+    def train(self, mode: bool = True) -> "ECAPAFrozenSpeakerEncoder":
+        """Only ``proj`` follows train/eval; the frozen ECAPA parts always stay in eval mode."""
+        super().train(mode)
+        for m in (self.compute_features, self.norm, self.embedding_model):
+            m.eval()
+        return self
+
+    def ecapa_embedding(self, enroll: torch.Tensor) -> torch.Tensor:
+        """Raw 192-d ECAPA embedding of (B, Te) waveforms at the model sample rate."""
+        with torch.no_grad(), torch.autocast(enroll.device.type, enabled=False):
             wav = self.resample(enroll.float())
             feats = self.compute_features(wav)
             feats = self.norm(feats, torch.ones(wav.shape[0], device=wav.device))
-            emb = self.ecapa.embedding_model(feats).squeeze(1)
-        return self.proj(emb)
+            return self.embedding_model(feats).squeeze(1)
+
+    def forward(self, enroll: torch.Tensor) -> torch.Tensor:
+        """enroll: (B, Te) -> (B, spk_dim). The ECAPA embedding is L2-normalised first: it is
+        meant to be compared by cosine, and its raw norm (hundreds) would destabilise FiLM."""
+        return self.proj(F.normalize(self.ecapa_embedding(enroll), dim=-1))
 
 
 def build_speaker_encoder(cfg: dict, mixture_encoder: WaveEncoder, sample_rate: int) -> nn.Module:

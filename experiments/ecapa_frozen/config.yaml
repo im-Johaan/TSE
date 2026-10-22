@@ -1,0 +1,10 @@
+# R=6 U-eConv-TSE with a frozen pretrained ECAPA-TDNN speaker encoder (SpeechBrain,
+# VoxCeleb) instead of the jointly trained ResNet. Everything else is identical to
+# configs/multispk_deep.yaml (saved as saved_models/multispk_r6_ep79): same separator,
+# loss, 2-4 speaker dynamic mixing, validation sets, LR schedule and 80-epoch budget,
+# trained from scratch. So the only variable is the speaker encoder.
+base: ../../configs/multispk_deep.yaml
+name: r6_ecapa
+
+model:
+  spk_encoder: ecapa_frozen    # frozen ECAPA (192-d, L2-normalised) -> trainable Linear -> 256

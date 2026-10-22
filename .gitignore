@@ -14,3 +14,7 @@ demo_3spk*/
 # saved models: keep best.pt + metadata, skip the 100 MB resume checkpoint and TB logs
 saved_models/**/last.pt
 saved_models/**/tb/
+
+# pretrained speaker models (downloaded on first use) and ECAPA experiment runs
+pretrained_models/
+experiments/*/r6_*/

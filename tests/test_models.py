@@ -152,3 +152,30 @@ def test_ecapa_without_speechbrain_raises_clear_error() -> None:
         pass
     with pytest.raises(ImportError, match="speechbrain"):
         build_model(small_model_cfg(spk_encoder="ecapa_frozen"), n_speakers=5)
+
+
+def test_ecapa_frozen_encoder_is_frozen_and_round_trips(tmp_path) -> None:
+    pytest.importorskip("speechbrain")
+    from tse.config import PROJECT_ROOT
+    if not (PROJECT_ROOT / "pretrained_models" / "spkrec-ecapa-voxceleb" / "embedding_model.ckpt").is_file():
+        pytest.skip("pretrained ECAPA not downloaded")
+    torch.manual_seed(0)
+    cfg = small_model_cfg(spk_encoder="ecapa_frozen")
+    model = build_model(cfg, n_speakers=5).train()
+    enc = model.spk_encoder
+    assert not enc.embedding_model.training and enc.proj.training
+    trainable = {n for n, p in model.named_parameters() if p.requires_grad}
+    assert all(not n.startswith("spk_encoder.") or n.startswith("spk_encoder.proj.") for n in trainable)
+    out = model(torch.randn(2, 8013), torch.randn(2, 16000))
+    (out["est"].pow(2).mean() + out["spk_logits"].mean()).backward()
+    assert enc.proj.weight.grad is not None
+    assert all(p.grad is None for p in enc.embedding_model.parameters())
+    model.eval()
+    mix, enr = torch.randn(1, 8000), torch.randn(1, 16000)
+    with torch.no_grad():
+        ref = model(mix, enr)["est"]
+    path = tmp_path / "ecapa.pt"
+    save_checkpoint(path, model, {"model": cfg, "data": {"sample_rate": 8000}}, {str(i): i for i in range(5)})
+    loaded, _ = load_model_from_checkpoint(path, torch.device("cpu"))
+    with torch.no_grad():
+        assert torch.allclose(loaded(mix, enr)["est"], ref, atol=1e-6)

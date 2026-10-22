@@ -333,6 +333,14 @@ The listening demo for the fine-tuned model is in `demo_3spk_finetuned/index.htm
 * The original model scored 9.99 dB and 5.28 dB on the same protocol.
 * The R=6 model's demo is in `demo_3spk_deep_r6/index.html`: 9.74 dB on 2 speakers and 8.48 dB on 3 speakers.
 
+### Experiment in progress: frozen ECAPA speaker encoder
+
+This experiment targets the main remaining error: wrong-speaker extraction on similar voices.
+
+* **The model:** `experiments/ecapa_frozen/` trains the same R=6 model with only the speaker encoder replaced by a frozen pretrained ECAPA-TDNN. Everything else is the same, from scratch for 80 epochs.
+* **Motivation:** ECAPA has 2.0% speaker-verification EER on the unseen test speakers, against 6.1% for the jointly trained ResNet.
+* **Status:** the results are not in yet. See `experiments/ecapa_frozen/README.md`.
+
 ## Interactive web demo
 
 ```bash
@@ -364,8 +372,11 @@ Implementation:
    implemented but raises a clear `FileNotFoundError` here.
 3. **PESQ is skipped** because the package cannot be built on Windows/Python 3.13 without a
    compiler. This is noted in `test_metrics.json`.
-4. **`ecapa_frozen` is implemented but untested.** speechbrain is not installed. Selecting it
-   raises a clear ImportError, and `run_ablations.sh` skips that ablation.
+4. **`ecapa_frozen`** needs speechbrain (tested with 1.1.2); without it, selecting it raises a
+   clear ImportError. The pretrained model is copied into `pretrained_models/` (no symlinks,
+   so it works on Windows). Only the feature extractor, input normalisation and embedding
+   network are kept and frozen. The 192-d embedding is L2-normalised before the trainable
+   Linear, because its raw norm (hundreds) would destabilise FiLM.
 5. **MGFA `scalar` beta** is `sigmoid(logit)` with logit initialised to 0 (beta = 0.5), the
    same parameterisation as `channel`, so beta stays in (0, 1).
 6. **`inject: input_only`** removes all speaker conditioning from stages 2..R. This covers
