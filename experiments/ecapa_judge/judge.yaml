@@ -1,0 +1,9 @@
+# Treatment: the same fine-tune plus the frozen-ECAPA judge loss on the output
+# (output must sound like the clean target and unlike each interferer). Weight 0.5: at 1.0
+# its gradient norm was ~0.7x that of -SI-SDR on the saved R=6 model.
+base: common.yaml
+name: judge
+
+loss:
+  lambda_judge: 0.5
+  judge_scale: 10.0

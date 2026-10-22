@@ -33,6 +33,8 @@ from tse.data.dataset import (TSEDataset, collate_tse, prepare_eval_set, prepare
 from tse.data.dynamic_mix import DynamicMixDataset  # noqa: E402
 from tse.engine import train_one_epoch, validate  # noqa: E402
 from tse.losses import TSELoss  # noqa: E402
+from tse.models.speaker_encoder import FrozenECAPA  # noqa: E402
+from tse.speaker_similarity import load_or_compute_speaker_embeddings, most_similar  # noqa: E402
 from tse.models import build_model  # noqa: E402
 from tse.utils import (count_parameters, load_checkpoint, resolve_device, save_checkpoint,  # noqa: E402
                        seed_everything, setup_logging)
@@ -84,13 +86,21 @@ def main() -> None:
     common = dict(sample_rate=sr, segment_seconds=dcfg["segment_seconds"],
                   enroll_seconds=dcfg["enroll_seconds_train"])
     if dm["enabled"]:
+        similar = None
+        if dm["hard_pair_prob"] > 0:
+            emb = load_or_compute_speaker_embeddings(
+                Path(dcfg["cache_dir"]) / f"ecapa_spk_{dcfg['train_split']}.pt",
+                data.pools["train"], dcfg["root"], device, sample_rate=dcfg["sample_rate"])
+            similar = most_similar(emb, dm["hard_pair_top_k"])
         train_ds = DynamicMixDataset(train_samples, dcfg["root"], data.pools["train"],
                                      data.spk2label, n_spk_probs=dm["n_spk_probs"],
                                      level_db_range=tuple(dm["level_db_range"]),
                                      partial_overlap_prob=dm["partial_overlap_prob"],
-                                     min_overlap=dm["min_overlap"], **common)
-        log.info("Dynamic mixing: P(2,3,4.. speakers)=%s, levels U%s dB, partial overlap p=%.2f",
-                 dm["n_spk_probs"], dm["level_db_range"], dm["partial_overlap_prob"])
+                                     min_overlap=dm["min_overlap"], similar_speakers=similar,
+                                     hard_pair_prob=dm["hard_pair_prob"], **common)
+        log.info("Dynamic mixing: P(2,3,4.. speakers)=%s, levels U%s dB, partial overlap p=%.2f, "
+                 "hard pairs p=%.2f (top %d)", dm["n_spk_probs"], dm["level_db_range"],
+                 dm["partial_overlap_prob"], dm["hard_pair_prob"], dm["hard_pair_top_k"])
     else:
         train_ds = TSEDataset(train_samples, dcfg["root"], data.pools["train"], data.spk2label,
                               train=True, **common)
@@ -124,7 +134,16 @@ def main() -> None:
                                  lr=tcfg["lr"], weight_decay=tcfg["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="max", factor=tcfg["lr_factor"], patience=tcfg["lr_patience"])
-    loss_fn = TSELoss(cfg["loss"]["lambda_ce"], cfg["loss"]["lambda_int"])
+    lcfg = cfg["loss"]
+    judge = None
+    if lcfg["lambda_judge"] > 0:
+        if not dm["enabled"]:
+            raise ValueError("loss.lambda_judge > 0 needs data.dynamic_mix (individual interferers)")
+        judge = FrozenECAPA(sr).to(device)
+        log.info("Judge loss: frozen ECAPA on the output, weight %.2f, scale %.1f",
+                 lcfg["lambda_judge"], lcfg["judge_scale"])
+    loss_fn = TSELoss(lcfg["lambda_ce"], lcfg["lambda_int"], lcfg["lambda_judge"], judge,
+                      lcfg["judge_scale"])
     if tcfg["init_from"] and not (args.resume and last_path.exists()):
         init = load_checkpoint(tcfg["init_from"], device)
         model.load_state_dict(init["model"])
@@ -133,6 +152,8 @@ def main() -> None:
 
     multi = len(val_dls) > 1
     log_fields = list(LOG_FIELDS)
+    if judge is not None:
+        log_fields += ["train_judge", "train_judge_acc"]
     if multi:
         log_fields += [f"val_{n}_{m}" for n, _ in val_dls for m in ("si_sdr", "si_sdri", "nsr")]
 
@@ -186,6 +207,9 @@ def main() -> None:
                    "val_si_sdri": va["si_sdri"], "val_nsr": va["nsr"],
                    "skipped_steps": tr["skipped_steps"], "epoch_time_s": tr["epoch_time_s"],
                    "val_time_s": val_time, "best_val_si_sdri": best}
+            if judge is not None:
+                row.update(train_judge=tr.get("judge", float("nan")),
+                           train_judge_acc=tr.get("judge_acc", float("nan")))
             if multi:
                 for n, v in per_set.items():
                     row.update({f"val_{n}_{m}": v[m] for m in ("si_sdr", "si_sdri", "nsr")})

@@ -1,0 +1,17 @@
+# Shared settings of the ECAPA-judge experiment: fine-tune the saved R=6 model
+# (saved_models/multispk_r6_ep79, read only; init_from loads its weights, nothing is
+# written there) for 25 epochs on 2-4 speaker dynamic mixtures where half of the mixtures
+# draw their interferers from the target's 20 most similar-sounding training speakers.
+base: ../../configs/multispk_deep.yaml
+
+data:
+  dynamic_mix:
+    hard_pair_prob: 0.5
+    hard_pair_top_k: 20
+
+train:
+  init_from: saved_models/multispk_r6_ep79/best.pt
+  lr: 2.5e-4
+  max_epochs: 25
+  lr_patience: 3
+  early_stop_patience: 25        # fixed 25-epoch budget

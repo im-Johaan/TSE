@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import torch
@@ -55,21 +56,21 @@ class ResNetSpeakerEncoder(nn.Module):
         return self.out(h.mean(dim=-1))
 
 
-class ECAPAFrozenSpeakerEncoder(nn.Module):
-    """Frozen SpeechBrain ECAPA-TDNN (VoxCeleb, 16 kHz) + trainable Linear(192 -> spk_dim).
+class FrozenECAPA(nn.Module):
+    """Frozen SpeechBrain ECAPA-TDNN (VoxCeleb, 16 kHz) producing raw 192-d embeddings.
 
     Input is resampled from ``sample_rate`` to 16 kHz. Requires ``speechbrain``; the
     pretrained model is downloaded on first use into ``savedir`` (files are copied, not
     symlinked, so it works on Windows without developer mode). Only the feature extractor,
     input normalisation and embedding network are kept (not the VoxCeleb classifier). They
-    stay in eval mode and run in float32 without gradients; only ``proj`` is trained.
-    The embedding is L2-normalised and scaled to unit RMS per dimension before ``proj``.
+    never train: parameters are frozen, the modules stay in eval mode and run in float32.
+    Used as the speaker encoder (:class:`ECAPAFrozenSpeakerEncoder`) and as the speaker
+    "judge" of the output in :class:`tse.losses.TSELoss`.
     """
 
     EMB_DIM = 192
 
-    def __init__(self, spk_dim: int, sample_rate: int = 8000,
-                 source: str = "speechbrain/spkrec-ecapa-voxceleb",
+    def __init__(self, sample_rate: int = 8000, source: str = "speechbrain/spkrec-ecapa-voxceleb",
                  savedir: str | Path | None = None) -> None:
         super().__init__()
         try:
@@ -77,8 +78,8 @@ class ECAPAFrozenSpeakerEncoder(nn.Module):
             from speechbrain.utils.fetching import LocalStrategy
         except ImportError as err:
             raise ImportError(
-                "spk_encoder='ecapa_frozen' needs speechbrain (pip install speechbrain). "
-                "Use spk_encoder='resnet' otherwise.") from err
+                "ECAPA (spk_encoder='ecapa_frozen' or loss.lambda_judge > 0) needs speechbrain "
+                "(pip install speechbrain).") from err
         import torchaudio
 
         if savedir is None:
@@ -93,23 +94,37 @@ class ECAPAFrozenSpeakerEncoder(nn.Module):
         for m in (self.compute_features, self.norm, self.embedding_model):
             for p in m.parameters():
                 p.requires_grad_(False)
-        self.proj = nn.Linear(self.EMB_DIM, spk_dim)
         self.train(self.training)
 
-    def train(self, mode: bool = True) -> "ECAPAFrozenSpeakerEncoder":
-        """Only ``proj`` follows train/eval; the frozen ECAPA parts always stay in eval mode."""
+    def train(self, mode: bool = True) -> "FrozenECAPA":
+        """Submodules other than the frozen ECAPA parts follow train/eval; ECAPA stays in eval."""
         super().train(mode)
         for m in (self.compute_features, self.norm, self.embedding_model):
             m.eval()
         return self
 
-    def ecapa_embedding(self, enroll: torch.Tensor) -> torch.Tensor:
-        """Raw 192-d ECAPA embedding of (B, Te) waveforms at the model sample rate."""
-        with torch.no_grad(), torch.autocast(enroll.device.type, enabled=False):
-            wav = self.resample(enroll.float())
-            feats = self.compute_features(wav)
-            feats = self.norm(feats, torch.ones(wav.shape[0], device=wav.device))
+    def ecapa_embedding(self, wav: torch.Tensor, grad: bool = False) -> torch.Tensor:
+        """Raw 192-d embedding of (B, T) waveforms at the model sample rate. With ``grad``,
+        gradients flow back to ``wav`` (the ECAPA weights still never change)."""
+        ctx = contextlib.nullcontext() if grad else torch.no_grad()
+        with ctx, torch.autocast(wav.device.type, enabled=False):
+            x = self.resample(wav.float())
+            feats = self.compute_features(x)
+            feats = self.norm(feats, torch.ones(x.shape[0], device=x.device))
             return self.embedding_model(feats).squeeze(1)
+
+
+class ECAPAFrozenSpeakerEncoder(FrozenECAPA):
+    """Frozen ECAPA-TDNN + trainable Linear(192 -> spk_dim) as the speaker encoder.
+
+    The embedding is L2-normalised and scaled to unit RMS per dimension before ``proj``.
+    """
+
+    def __init__(self, spk_dim: int, sample_rate: int = 8000,
+                 source: str = "speechbrain/spkrec-ecapa-voxceleb",
+                 savedir: str | Path | None = None) -> None:
+        super().__init__(sample_rate, source, savedir)
+        self.proj = nn.Linear(self.EMB_DIM, spk_dim)
 
     def forward(self, enroll: torch.Tensor) -> torch.Tensor:
         """enroll: (B, Te) -> (B, spk_dim).
@@ -117,8 +132,8 @@ class ECAPAFrozenSpeakerEncoder(nn.Module):
         The ECAPA embedding is L2-normalised (it is meant to be compared by cosine, and its raw
         norm of hundreds would destabilise FiLM), then scaled by sqrt(192) so every dimension
         has unit RMS. Without that scale the projected embedding starts about 4x smaller than
-        the ResNet's. Because FiLM weights are zero-initialised and their gradient is
-        proportional to the embedding, the speaker cue was then learned much more slowly.
+        the ResNet's, and because FiLM weights are zero-initialised (gradient proportional to
+        the embedding) the speaker cue was learned much more slowly.
         """
         e = F.normalize(self.ecapa_embedding(enroll), dim=-1) * self.EMB_DIM ** 0.5
         return self.proj(e)

@@ -41,6 +41,10 @@ DEFAULTS: dict[str, Any] = {
             "level_db_range": [-5.0, 5.0],  # i.i.d. per-source level
             "partial_overlap_prob": 0.25,
             "min_overlap": 0.5,
+            # P(interferers drawn from the target's top-k most similar training speakers,
+            # by ECAPA speaker similarity) instead of uniformly
+            "hard_pair_prob": 0.0,
+            "hard_pair_top_k": 20,
         },
         # extra validation sets: [{name, root, split, subset}], e.g. Libri3Mix dev
         "extra_val_sets": [],
@@ -79,6 +83,8 @@ DEFAULTS: dict[str, Any] = {
     "loss": {
         "lambda_ce": 0.5,
         "lambda_int": 0.1,
+        "lambda_judge": 0.0,  # frozen-ECAPA "judge" loss on the output (needs dynamic mixing)
+        "judge_scale": 10.0,  # cosine -> logit scale of the judge softmax
     },
     "train": {
         "batch_size": 8,

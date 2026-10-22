@@ -141,7 +141,7 @@ def collate_tse(batch: list[dict[str, Any]]) -> dict[str, Any]:
         n = max(x.shape[-1] for x in xs)
         return torch.stack([torch.nn.functional.pad(x, (0, n - x.shape[-1])) for x in xs])
 
-    return {
+    out = {
         "mixture": pad_stack("mixture"),
         "enrollment": pad_stack("enrollment"),
         "target": pad_stack("target"),
@@ -150,6 +150,10 @@ def collate_tse(batch: list[dict[str, Any]]) -> dict[str, Any]:
         "lengths": torch.tensor([b["mixture"].shape[-1] for b in batch], dtype=torch.long),
         "meta": [b["meta"] for b in batch],
     }
+    if "interferers" in batch[0]:  # dynamic mixing: individual interferers (B, K, T)
+        out["interferers"] = pad_stack("interferers")
+        out["n_interferers"] = torch.tensor([b["n_interferers"] for b in batch], dtype=torch.long)
+    return out
 
 
 @dataclass

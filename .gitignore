@@ -18,3 +18,5 @@ saved_models/**/tb/
 # pretrained speaker models (downloaded on first use) and ECAPA experiment runs
 pretrained_models/
 experiments/*/r6_*/
+experiments/ecapa_judge/control/
+experiments/ecapa_judge/judge/

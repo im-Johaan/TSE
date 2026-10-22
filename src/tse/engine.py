@@ -85,9 +85,11 @@ def train_one_epoch(model: nn.Module, loader: DataLoader, loss_fn: TSELoss,
             for k, v in res.items():
                 writer.add_scalar(f"train_step/{k}", v, global_step)
         if (i + 1) % train_cfg["log_every"] == 0:
-            log.info("epoch %d step %d/%d  loss %.3f  si_sdr %.2f dB  ce %.3f  (%.1f it/s)",
+            judge = (f"  judge {sums['judge'] / n_ok:.3f} acc {sums['judge_acc'] / n_ok:.3f}"
+                     if "judge" in sums else "")
+            log.info("epoch %d step %d/%d  loss %.3f  si_sdr %.2f dB  ce %.3f%s  (%.1f it/s)",
                      epoch, i + 1, len(loader), sums["total"] / n_ok, sums["si_sdr"] / n_ok,
-                     sums["ce"] / n_ok, (i + 1) / (time.time() - t0))
+                     sums["ce"] / n_ok, judge, (i + 1) / (time.time() - t0))
     stats = {k: v / max(n_ok, 1) for k, v in sums.items()}
     stats["skipped_steps"] = float(n_skipped)
     stats["epoch_time_s"] = time.time() - t0

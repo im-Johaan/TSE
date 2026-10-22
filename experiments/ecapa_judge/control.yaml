@@ -1,0 +1,6 @@
+# Control: identical fine-tune without the judge loss.
+base: common.yaml
+name: control
+
+loss:
+  lambda_judge: 0.0
