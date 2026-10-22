@@ -44,6 +44,14 @@ function Run([string]$exe, [string[]]$argv) {
 Write-Host "Target Speaker Extraction - demo setup" -ForegroundColor White
 Write-Host "Folder: $PSScriptRoot" -ForegroundColor DarkGray
 
+# PyTorch contains deep paths; without Windows long-path support the total must stay < 260
+$longPaths = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -ErrorAction SilentlyContinue).LongPathsEnabled
+if ($longPaths -ne 1 -and $PSScriptRoot.Length -gt 70) {
+    Fail ("this folder path is $($PSScriptRoot.Length) characters long and Windows long paths are off, so installing " +
+          "PyTorch would fail. Move/clone the project to a short folder such as C:\TSE and run again " +
+          "(or enable long paths: https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation).")
+}
+
 # 1. update ---------------------------------------------------------------------------
 Step 1 "Updating the code"
 if ($NoPull) { Info "skipped (-NoPull)" }
