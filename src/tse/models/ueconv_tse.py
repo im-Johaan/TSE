@@ -69,15 +69,18 @@ class UEConvTSE(TSEBase):
             return F_r
         return mods[r - 1](E, F_r)
 
-    def forward(self, mixture: torch.Tensor, enrollment: torch.Tensor,
-                compute_interference: bool | None = None) -> dict[str, torch.Tensor | None]:
+    def forward(self, mixture: torch.Tensor, enrollment: torch.Tensor | None,
+                compute_interference: bool | None = None,
+                embedding: torch.Tensor | None = None) -> dict[str, torch.Tensor | None]:
+        """``embedding`` (B, spk_dim), if given, is used instead of ``embed(enrollment)`` (e.g.
+        a speaker embedding computed once for streaming); ``enrollment`` may then be None."""
         if compute_interference is None:
             compute_interference = self.training
         compute_interference = compute_interference and self.use_interf
 
         x_pad, T = self.encoder.pad(mixture)
         W = self.encoder(x_pad)
-        e = self.embed(enrollment)
+        e = embedding if embedding is not None else self.embed(enrollment)
         x = self.bottleneck(W)
         mgfa_t = self.mgfa_t if self.use_mgfa else None
         mgfa_i = self.mgfa_i if (self.use_mgfa and self.use_interf) else None

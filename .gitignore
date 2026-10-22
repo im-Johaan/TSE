@@ -20,3 +20,4 @@ pretrained_models/
 experiments/*/r6_*/
 experiments/ecapa_judge/control/
 experiments/ecapa_judge/judge/
+results/

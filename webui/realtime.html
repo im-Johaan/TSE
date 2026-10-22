@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSE Live</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --border: #dfe3e8;
+  --text: #1b1f24; --muted: #5d6673; --accent: #2f6fde; --accent-text: #ffffff;
+  --good: #1f8a4c; --warn: #b07a12; --bad: #b4441c; --bad-bg: #fbeee8;
+  --in: #8a94a3; --out: #2f6fde; --radius: 10px; --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --panel: #191d23; --panel-2: #20252c; --border: #2d333c;
+    --text: #e6e9ed; --muted: #9aa3ae; --accent: #5b8ff0; --accent-text: #0d1117;
+    --good: #4cc282; --warn: #e2b04a; --bad: #f08a5d; --bad-bg: #2e1d16;
+    --in: #6b7480; --out: #5b8ff0; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --panel: #191d23; --panel-2: #20252c; --border: #2d333c;
+  --text: #e6e9ed; --muted: #9aa3ae; --accent: #5b8ff0; --accent-text: #0d1117;
+  --good: #4cc282; --warn: #e2b04a; --bad: #f08a5d; --bad-bg: #2e1d16;
+  --in: #6b7480; --out: #5b8ff0; --shadow: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 14px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+p.lead { margin: 0 0 20px; color: var(--muted); max-width: 75ch; }
+.layout { display: grid; gap: 16px; grid-template-columns: minmax(280px, 380px) 1fr; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, button { font: inherit; color: inherit; }
+select { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; max-width: 100%; }
+button { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button.big { padding: 11px 22px; font-size: 16px; }
+button.rec.on { background: var(--bad); color: #fff; border-color: var(--bad); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid var(--border); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-text); }
+.meta { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.metric { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; font-size: 12px; color: var(--muted); }
+.metric b { display: block; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+audio { width: 100%; height: 36px; }
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.status { font-size: 14px; color: var(--muted); min-height: 1.5em; }
+.status.err { color: var(--bad); }
+.live-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+.badge.live { background: var(--bad); color: #fff; }
+.badge.live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.wave { display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; align-items: center; margin-bottom: 10px; }
+.wave span { font-size: 13px; font-weight: 600; }
+.wave span small { display: block; font-weight: 400; color: var(--muted); }
+.wave canvas { width: 100%; height: 72px; background: var(--panel-2); border-radius: 6px; display: block; }
+.tiles { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin: 14px 0; }
+.tile { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+.tile .k { font-size: 12px; color: var(--muted); font-weight: 600; }
+.tile .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.tile.total { outline: 2px solid var(--accent); outline-offset: -2px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.warnbox { background: var(--bad-bg); color: var(--bad); border-radius: 8px; padding: 8px 12px; font-size: 13px; display: none; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Live target speaker extraction</h1>
+  <p class="lead">Give a reference recording of the person you want to hear, then stream audio in.
+    The model keeps only that voice, live. Use headphones with the microphone, or the output feeds back into it.</p>
+
+  <div class="layout">
+    <div class="stack">
+      <section class="panel">
+        <h2>1 · Model</h2>
+        <select id="model" style="width:100%"></select>
+        <div class="meta" id="modelInfo"></div>
+        <div class="metrics" id="modelMetrics"></div>
+      </section>
+
+      <section class="panel">
+        <h2>2 · Reference (target voice)</h2>
+        <div class="row">
+          <button id="refUpload">Upload</button>
+          <button id="refRecord" class="rec">● Record</button>
+          <input type="file" id="refFile" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg,.webm" hidden>
+        </div>
+        <div class="meta" id="refInfo" style="margin-top:8px">No reference yet. Use 3–10 s of the target speaking alone.</div>
+        <audio id="refAudio" controls class="hidden"></audio>
+      </section>
+
+      <section class="panel">
+        <h2>3 · Input</h2>
+        <div class="seg" id="source">
+          <button data-src="mic" aria-pressed="true">Microphone</button>
+          <button data-src="file">File</button>
+          <button data-src="random">Test mixture</button>
+        </div>
+        <div id="srcMic" class="meta" style="margin-top:8px">Live microphone. Headphones recommended.</div>
+        <div id="srcFile" class="hidden" style="margin-top:8px">
+          <div class="row"><button id="mixUpload">Choose mixture file</button>
+            <input type="file" id="mixFile" accept="audio/*,.wav,.flac,.mp3,.m4a,.ogg,.webm" hidden></div>
+          <div class="meta" id="mixInfo">Played at real-time speed as if it were live.</div>
+        </div>
+        <div id="srcRandom" class="hidden" style="margin-top:8px">
+          <div class="row">
+            <select id="randN"><option value="2">2 speakers</option><option value="3" selected>3 speakers</option><option value="4">4 speakers</option></select>
+            <select id="randGender"><option value="any">any genders</option><option value="same">same gender (hard)</option><option value="mixed">mixed</option></select>
+            <button id="randBtn">New mixture</button>
+          </div>
+          <div class="meta" id="randInfo">LibriSpeech test speakers, mixed and played as if live. The reference is filled in automatically.</div>
+          <div id="randTarget" class="hidden" style="margin-top:6px"><div class="meta">Clean target (for comparison):</div><audio id="targetAudio" controls></audio></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>4 · Latency</h2>
+        <div class="row">
+          <label class="field">Hop<select id="hop"></select></label>
+          <label class="field">Lookahead<select id="lookahead"></select></label>
+        </div>
+        <p class="note" style="margin-top:8px">Lookahead buys quality: the model sees a little of the future before it commits.
+          Measured on 3-speaker test mixtures: offline 10.1 dB; 300 ms ≈ 8.4 dB; 500 ms ≈ 9.1 dB (preliminary, 12 mixtures).</p>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="live-head">
+        <div class="row">
+          <button class="primary big" id="startBtn" disabled>Start</button>
+          <span class="badge" id="liveBadge">Idle</span>
+        </div>
+        <div class="row">
+          <span class="meta">Hear:</span>
+          <div class="seg" id="hear">
+            <button data-hear="out" aria-pressed="true">Extracted</button>
+            <button data-hear="in">Original</button>
+            <button data-hear="none">Mute</button>
+          </div>
+        </div>
+      </div>
+      <div class="warnbox" id="warn"></div>
+      <div class="wave"><span>Input<small>mixture</small></span><canvas id="cvIn"></canvas></div>
+      <div class="wave"><span>Output<small>target voice</small></span><canvas id="cvOut"></canvas></div>
+      <div class="tiles">
+        <div class="tile"><div class="k">Hop + lookahead</div><div class="v" id="tAlgo">–</div></div>
+        <div class="tile"><div class="k">Model compute</div><div class="v" id="tCompute">–</div></div>
+        <div class="tile"><div class="k">Playback margin</div><div class="v" id="tBuf">–</div></div>
+        <div class="tile"><div class="k">Audio device</div><div class="v" id="tDev">–</div></div>
+        <div class="tile total"><div class="k">≈ Total latency</div><div class="v" id="tTotal">–</div></div>
+      </div>
+      <div class="row">
+        <button id="dlIn" disabled>Download input</button>
+        <button id="dlOut" disabled>Download output</button>
+        <span class="meta" id="recInfo"></span>
+      </div>
+      <p class="status" id="status" style="margin-top:10px">Connecting…</p>
+      <p class="note">The models were trained on clean read speech at 8 kHz. Live microphones (room echo, noise)
+        will sound worse than the test mixtures, and nothing above 4 kHz survives (telephone bandwidth).</p>
+    </section>
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const WORKLET = `
+class Capture extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0] && inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+}
+class Player extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.buf = new Float32Array(sampleRate * 8); this.r = 0; this.w = 0;
+    this.playing = false; this.countdown = -1; this.prebuffer = 1600; this.margin = 400; this.maxbuf = 6400;
+    this.tick = 0; this.under = 0;
+    this.port.onmessage = e => {
+      const d = e.data;
+      if (d.cmd === "cfg") { this.prebuffer = d.prebuffer; this.margin = d.margin; this.maxbuf = d.maxbuf; return; }
+      if (d.cmd === "clear") { this.r = this.w = 0; this.playing = false; this.countdown = -1; return; }
+      const n = this.buf.length;
+      for (let i = 0; i < d.length; i++) { this.buf[this.w % n] = d[i]; this.w++; }
+      if (this.w - this.r > n) this.r = this.w - n;
+    };
+  }
+  process(_, outputs) {
+    const out = outputs[0][0], n = this.buf.length;
+    let avail = this.w - this.r;
+    if (!this.playing) {
+      if (avail >= this.prebuffer) {
+        if (this.countdown < 0) this.countdown = this.margin;
+        this.countdown -= out.length;
+        if (this.countdown <= 0) { this.playing = true; this.countdown = -1; }
+      }
+    } else if (avail > this.maxbuf) { this.r = this.w - this.prebuffer; avail = this.prebuffer; }
+    if (this.playing && avail >= out.length) {
+      for (let i = 0; i < out.length; i++) out[i] = this.buf[(this.r + i) % n];
+      this.r += out.length;
+    } else {
+      out.fill(0);
+      if (this.playing) { this.playing = false; this.under++; }
+    }
+    if (++this.tick % 25 === 0) this.port.postMessage({ buffered: this.w - this.r, underruns: this.under });
+    return true;
+  }
+}
+registerProcessor("capture", Capture);
+registerProcessor("player", Player);`;
+
+let ws, SR = 8000, ctx = null, captureNode, playerNode, outGain, monGain;
+let models = [], modelId = null, settings = { hop: 0.2, lookahead: 0.1 };
+let enrolled = false, running = false, source = "mic";
+let mixBuffer = null, srcNode = null, micStream = null;
+let sendBuf = new Float32Array(0), stats = {}, playerStats = { buffered: 0, underruns: 0 }, bufEma = null;
+const recIn = [], recOut = []; let recLen = 0;
+const MAX_REC_S = 180;
+
+function setStatus(msg, err = false) { const s = $("#status"); s.textContent = msg; s.classList.toggle("err", err); }
+function warn(msg) { const w = $("#warn"); w.textContent = msg || ""; w.style.display = msg ? "block" : "none"; }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function f32ToB64(x) { const u8 = new Uint8Array(x.buffer, x.byteOffset, x.byteLength); let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function b64ToF32(b) { const s = atob(b), u8 = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i); return new Float32Array(u8.buffer); }
+function wavUrl(x) {
+  const n = x.length, buf = new ArrayBuffer(44 + 2 * n), v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + 2 * n, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, SR, true); v.setUint32(28, 2 * SR, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, "data"); v.setUint32(40, 2 * n, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + 2 * i, Math.max(-1, Math.min(1, x[i])) * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+async function decodeToSR(arrayBuffer) {
+  const tmp = new AudioContext();
+  let b; try { b = await tmp.decodeAudioData(arrayBuffer); } finally { tmp.close(); }
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(b.duration * SR)), SR);
+  const s = off.createBufferSource(); s.buffer = b; s.connect(off.destination); s.start();
+  return (await off.startRendering()).getChannelData(0).slice();
+}
+function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+// ---------- websocket ----------
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => send({ type: "hello" });
+  ws.onclose = () => { setStatus("Disconnected from the server. Reload the page after restarting it.", true); stopAudio(); };
+  ws.onmessage = e => {
+    if (e.data instanceof ArrayBuffer) { onOutput(new Float32Array(e.data)); return; }
+    const m = JSON.parse(e.data);
+    (HANDLERS[m.type] || (() => {}))(m);
+  };
+}
+const HANDLERS = {
+  init(m) {
+    SR = m.sample_rate; models = m.models; modelId = m.model; settings = m.settings;
+    $("#model").innerHTML = models.map(x => `<option value="${esc(x.id)}">${esc(x.label)}${x.default ? " (default)" : ""}</option>`).join("");
+    $("#model").value = modelId;
+    $("#hop").innerHTML = m.hops.map(h => `<option value="${h}">${h * 1000} ms</option>`).join("");
+    $("#lookahead").innerHTML = m.lookaheads.map(h => `<option value="${h}">${h * 1000} ms</option>`).join("");
+    $("#hop").value = settings.hop; $("#lookahead").value = settings.lookahead;
+    if (!m.random_available) $("[data-src=random]").classList.add("hidden");
+    showModel(m.model_info); updateAlgo(); setStatus("Ready. Add a reference to start."); refreshStart();
+  },
+  model(m) { modelId = m.model; showModel(m.model_info); setStatus(`Switched to "${m.model_info.label}" in ${m.switch_ms.toFixed(0)} ms${running ? " without stopping" : ""}.`); $("#model").disabled = false; },
+  enrolled(m) { enrolled = true; setStatus(`Reference enrolled (${m.seconds.toFixed(1)} s).`); refreshStart(); },
+  started(m) { setStatus(`Streaming. Algorithmic latency ${m.settings.latency_ms.toFixed(0)} ms.`); },
+  settings(m) { settings = m.settings; updateAlgo(); configurePlayer(); },
+  stopped() {},
+  stats(m) { stats = m; if (m.dropped_s > 0.05) warn(`Processing fell behind real time; dropped ${m.dropped_s.toFixed(1)} s of input. Try a larger hop.`); },
+  mixture(m) {
+    mixBuffer = b64ToF32(m.mixture);
+    const tgt = b64ToF32(m.target);
+    $("#targetAudio").src = wavUrl(tgt); $("#randTarget").classList.remove("hidden");
+    const sp = m.speakers.map((s, i) => `${i === 0 ? "<b>target</b> " : ""}${s.speaker} (${s.gender})`).join(", ");
+    $("#randInfo").innerHTML = `${m.speakers.length} speakers: ${sp} · ${(mixBuffer.length / SR).toFixed(1)} s`;
+    setReference(b64ToF32(m.reference), `same speaker as the target, different utterance`);
+    $("#randBtn").disabled = false; refreshStart();
+  },
+  error(m) { setStatus("Error: " + m.message, true); $("#model").disabled = false; $("#randBtn").disabled = false; },
+};
+
+function showModel(info) {
+  const m = models.find(x => x.id === info.id) || {};
+  $("#modelInfo").textContent = `${info.type || ""}${info.R ? ", R=" + info.R : ""}${info.params_M ? ", " + info.params_M + "M params" : ""} · ${m.notes || ""}`;
+  const mm = m.metrics || {};
+  $("#modelMetrics").innerHTML = ["2spk", "3spk", "4spk"].map(k => mm[k]
+    ? `<div class="metric">${k.replace("spk", " speakers")}<b>${mm[k].si_sdri.toFixed(2)} dB</b>NSR ${(100 * mm[k].nsr).toFixed(1)}%</div>`
+    : `<div class="metric">${k.replace("spk", " speakers")}<b>–</b>not evaluated</div>`).join("");
+}
+function updateAlgo() { $("#tAlgo").innerHTML = `${((settings.hop + settings.lookahead) * 1000).toFixed(0)} <small>ms</small>`; }
+
+// ---------- reference ----------
+function setReference(x, label) {
+  $("#refAudio").src = wavUrl(x); $("#refAudio").classList.remove("hidden");
+  $("#refInfo").textContent = `${(x.length / SR).toFixed(1)} s · ${label}`;
+  enrolled = false; refreshStart();
+  send({ type: "reference", audio: f32ToB64(x) });
+}
+$("#refUpload").onclick = () => $("#refFile").click();
+$("#refFile").onchange = async () => {
+  const f = $("#refFile").files[0]; if (!f) return;
+  try { setReference(await decodeToSR(await f.arrayBuffer()), f.name); } catch (e) { setStatus("Could not decode " + f.name + ": " + e.message, true); }
+};
+let refRec = null;
+$("#refRecord").onclick = async () => {
+  if (refRec) { refRec.stop(); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { setStatus("Microphone unavailable: " + e.message, true); return; }
+  const chunks = [];
+  refRec = new MediaRecorder(stream);
+  refRec.ondataavailable = e => chunks.push(e.data);
+  refRec.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop()); refRec = null;
+    $("#refRecord").textContent = "● Record"; $("#refRecord").classList.remove("on");
+    try { setReference(await decodeToSR(await new Blob(chunks).arrayBuffer()), "microphone recording"); } catch (e) { setStatus("Could not decode the recording: " + e.message, true); }
+  };
+  refRec.start(); $("#refRecord").textContent = "■ Stop"; $("#refRecord").classList.add("on");
+  setStatus("Recording the reference… the target should speak alone for 3–10 s.");
+};
+
+// ---------- input source ----------
+document.querySelectorAll("#source button").forEach(b => b.onclick = () => {
+  if (running) return;
+  source = b.dataset.src;
+  document.querySelectorAll("#source button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  $("#srcMic").classList.toggle("hidden", source !== "mic");
+  $("#srcFile").classList.toggle("hidden", source !== "file");
+  $("#srcRandom").classList.toggle("hidden", source !== "random");
+  refreshStart();
+});
+$("#mixUpload").onclick = () => $("#mixFile").click();
+$("#mixFile").onchange = async () => {
+  const f = $("#mixFile").files[0]; if (!f) return;
+  try { mixBuffer = await decodeToSR(await f.arrayBuffer()); $("#mixInfo").textContent = `${f.name} · ${(mixBuffer.length / SR).toFixed(1)} s, played at real-time speed`; }
+  catch (e) { setStatus("Could not decode " + f.name + ": " + e.message, true); }
+  refreshStart();
+};
+$("#randBtn").onclick = () => { $("#randBtn").disabled = true; setStatus("Building a test mixture…"); send({ type: "random_mixture", n: +$("#randN").value, gender: $("#randGender").value }); };
+function refreshStart() {
+  const haveInput = source === "mic" || mixBuffer;
+  $("#startBtn").disabled = !running && !(enrolled && haveInput);
+  $("#source").querySelectorAll("button").forEach(b => b.disabled = running && b.dataset.src !== source);
+}
+
+// ---------- model / settings ----------
+$("#model").onchange = () => { $("#model").disabled = true; setStatus("Loading model…"); send({ type: "set_model", id: $("#model").value }); };
+$("#hop").onchange = $("#lookahead").onchange = () => {
+  settings.hop = +$("#hop").value; settings.lookahead = +$("#lookahead").value; updateAlgo();
+  send({ type: "settings", hop: settings.hop, lookahead: settings.lookahead });
+};
+
+// ---------- audio graph ----------
+async function ensureContext() {
+  if (ctx) return;
+  try { ctx = new AudioContext({ sampleRate: SR, latencyHint: "interactive" }); }
+  catch (e) { throw new Error(`this browser cannot run audio at ${SR} Hz (use Chrome or Edge): ${e.message}`); }
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+  captureNode = new AudioWorkletNode(ctx, "capture", { numberOfInputs: 1, numberOfOutputs: 0 });
+  playerNode = new AudioWorkletNode(ctx, "player", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+  outGain = ctx.createGain(); monGain = ctx.createGain();
+  playerNode.connect(outGain).connect(ctx.destination);
+  monGain.connect(ctx.destination);
+  captureNode.port.onmessage = e => onCapture(e.data);
+  playerNode.port.onmessage = e => { playerStats = e.data; };
+  applyHear();
+}
+function configurePlayer() {
+  if (!playerNode) return;
+  const hop = Math.round(settings.hop * SR);
+  playerNode.port.postMessage({ cmd: "cfg", prebuffer: hop, margin: Math.round(0.05 * SR), maxbuf: 3 * hop + Math.round(0.1 * SR) });
+}
+let hear = "out";
+function applyHear() {
+  if (!ctx) return;
+  outGain.gain.value = hear === "out" ? 1 : 0;
+  monGain.gain.value = hear === "in" ? 1 : 0;
+}
+document.querySelectorAll("#hear button").forEach(b => b.onclick = () => {
+  hear = b.dataset.hear;
+  document.querySelectorAll("#hear button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  if (hear === "in" && source === "mic") warn("Playing the raw microphone back: use headphones, or it will feed back.");
+  else warn("");
+  applyHear();
+});
+
+function onCapture(frame) {
+  if (!running) return;
+  pushWave(waveIn, frame);
+  record(recIn, frame);
+  const n = sendBuf.length, merged = new Float32Array(n + frame.length);
+  merged.set(sendBuf); merged.set(frame, n); sendBuf = merged;
+  if (sendBuf.length >= SR / 50) { ws.send(sendBuf.buffer); sendBuf = new Float32Array(0); }  // 20 ms frames
+}
+function onOutput(x) {
+  if (!running) return;
+  playerNode.port.postMessage(x);
+  pushWave(waveOut, x);
+  record(recOut, x);
+}
+function record(list, x) {
+  if (recLen > MAX_REC_S * SR * 2) return;
+  list.push(x.slice ? x.slice(0) : x); recLen += x.length;
+}
+
+$("#startBtn").onclick = async () => { if (running) stop(); else await start(); };
+async function start() {
+  try { await ensureContext(); } catch (e) { setStatus(e.message, true); return; }
+  await ctx.resume();
+  configurePlayer(); playerNode.port.postMessage({ cmd: "clear" });
+  recIn.length = recOut.length = 0; recLen = 0; warn("");
+  waveIn.fill(0); waveOut.fill(0); bufEma = null;
+  try {
+    if (source === "mic") {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } });
+      srcNode = ctx.createMediaStreamSource(micStream);
+    } else {
+      const b = ctx.createBuffer(1, mixBuffer.length, SR); b.copyToChannel(mixBuffer, 0);
+      srcNode = ctx.createBufferSource(); srcNode.buffer = b;
+      srcNode.onended = () => setTimeout(() => { if (running) { stop(); setStatus("Mixture finished. Download the output or press Start to play it again."); } }, 1000 * (settings.hop + settings.lookahead) + 400);
+    }
+  } catch (e) { setStatus("Could not open the input: " + e.message, true); return; }
+  srcNode.connect(captureNode); srcNode.connect(monGain);
+  running = true;
+  send({ type: "start", hop: settings.hop, lookahead: settings.lookahead });
+  if (srcNode.start) srcNode.start();
+  $("#startBtn").textContent = "Stop"; $("#liveBadge").textContent = "Live"; $("#liveBadge").classList.add("live");
+  $("#dlIn").disabled = $("#dlOut").disabled = true;
+  refreshStart();
+}
+function stopAudio() {
+  if (srcNode) { try { srcNode.disconnect(); if (srcNode.stop) srcNode.stop(); } catch (_) { /* already stopped */ } srcNode = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+}
+function stop() {
+  running = false; stopAudio(); send({ type: "stop" }); sendBuf = new Float32Array(0);
+  $("#startBtn").textContent = "Start"; $("#liveBadge").textContent = "Idle"; $("#liveBadge").classList.remove("live");
+  $("#dlIn").disabled = !recIn.length; $("#dlOut").disabled = !recOut.length;
+  $("#recInfo").textContent = recIn.length ? `${(recIn.reduce((a, x) => a + x.length, 0) / SR).toFixed(1)} s recorded` : "";
+  refreshStart();
+}
+function concat(list) { const n = list.reduce((a, x) => a + x.length, 0), y = new Float32Array(n); let o = 0; for (const x of list) { y.set(x, o); o += x.length; } return y; }
+function download(list, name) { const a = document.createElement("a"); a.href = wavUrl(concat(list)); a.download = name; a.click(); }
+$("#dlIn").onclick = () => download(recIn, "live_input.wav");
+$("#dlOut").onclick = () => download(recOut, "live_output.wav");
+
+// ---------- visuals ----------
+const BUCKET = 80, SECONDS = 6;  // 10 ms buckets at 8 kHz
+const waveIn = new Float32Array(SECONDS * 100), waveOut = new Float32Array(SECONDS * 100);
+const acc = new Map();
+function pushWave(arr, x) {
+  let a = acc.get(arr) || { peak: 0, n: 0 };
+  for (let i = 0; i < x.length; i++) {
+    const v = Math.abs(x[i]); if (v > a.peak) a.peak = v;
+    if (++a.n === BUCKET) { arr.copyWithin(0, 1); arr[arr.length - 1] = a.peak; a = { peak: 0, n: 0 }; }
+  }
+  acc.set(arr, a);
+}
+function draw(cv, arr, color) {
+  const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h); g.fillStyle = color;
+  const step = w / arr.length, mid = h / 2;
+  for (let i = 0; i < arr.length; i++) { const a = Math.min(1, arr[i] * 1.6) * (mid - 2); g.fillRect(i * step, mid - a, Math.max(1, step), Math.max(1, 2 * a)); }
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function frame() {
+  draw($("#cvIn"), waveIn, css("--in")); draw($("#cvOut"), waveOut, css("--out"));
+  if (running && ctx) {
+    const comp = stats.compute_ms || 0, buf = 1000 * (playerStats.buffered || 0) / SR;
+    bufEma = bufEma === null ? buf : 0.95 * bufEma + 0.05 * buf;
+    const dev = 1000 * ((ctx.baseLatency || 0) + (ctx.outputLatency || 0));
+    const algo = (settings.hop + settings.lookahead) * 1000;
+    // Output arrives in bursts of one hop, so the buffer averages hop/2 plus a safety margin.
+    // Each sample waits one hop in total (filling the input hop + draining the output burst),
+    // which `algo` already counts; only the margin above hop/2 adds latency.
+    const extra = Math.max(0, bufEma - 500 * settings.hop);
+    $("#tCompute").innerHTML = `${comp.toFixed(0)} <small>ms</small>`;
+    $("#tBuf").innerHTML = `+${extra.toFixed(0)} <small>ms</small>`;
+    $("#tDev").innerHTML = `${dev.toFixed(0)} <small>ms</small>`;
+    // + 20 ms: input is sent to the server in 20 ms frames
+    $("#tTotal").innerHTML = `${(algo + comp + extra + dev + 20).toFixed(0)} <small>ms</small>`;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+connect();
+</script>
+</body>
+</html>

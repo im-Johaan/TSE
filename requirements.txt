@@ -14,4 +14,5 @@ pytest>=8.0
 fast_bss_eval>=0.1.4   # SDR(i)
 pystoi>=0.4            # STOI
 # pesq>=0.0.4          # PESQ: needs a C compiler on Windows / Python 3.13 (no wheel); skipped if absent
-speechbrain>=1.0       # only for model.spk_encoder=ecapa_frozen (experiments/ecapa_frozen)
+speechbrain>=1.0       # ECAPA: spk_encoder=ecapa_frozen, loss.lambda_judge, hard-pair mixing
+websockets>=13         # scripts/realtime_server.py (tested with 17.3)

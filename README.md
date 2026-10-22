@@ -367,6 +367,70 @@ Implementation:
 * The browser resamples audio to 8 kHz mono before sending it.
 * Recordings are limited to 60 s each.
 * The core logic is in `src/tse/demo_app.py` (tested in `tests/test_demo_app.py`), and the page is `webui/index.html`.
+* The model menu comes from `models.yaml` (see below).
+
+## Model registry and swapping models
+
+The demos never hard-code checkpoints. They list the models in `models.yaml` and start with its `default`:
+
+```yaml
+default: r6_multispk
+models:
+- id: r6_multispk
+  label: R=6, trained on 2-4 speakers
+  backend: ueconv                       # model family, see src/tse/serving/backends.py
+  checkpoint: saved_models/multispk_r6_ep79/best.pt
+  metrics_dir: runs/multispk_deep_r6    # where *_test_metrics.json live (optional)
+```
+
+```bash
+python scripts/register_model.py --list                       # compare all models on the test sets
+python scripts/register_model.py --id r6_judge --label "R=6 + judge" \
+    --ckpt experiments/ecapa_judge/judge/best.pt                # register (prints the comparison)
+python scripts/register_model.py --set-default r6_judge       # promote it
+```
+
+The `src/tse/serving/` package has three parts:
+
+* **`backends.py`** defines the interface every model implements:
+  * `enroll(reference)` returns a speaker profile, computed once.
+  * `extract(mixture, profile)` processes a whole clip.
+  * `new_stream(profile)` returns a live stream.
+
+  `UEConvBackend` covers every checkpoint of this project (U-eConv-TSE of any depth, TD-SpeakerBeam). To add another model family (a causal model, ONNX, another codebase), write a backend class with `@register_backend("name")` and use `backend: name` in `models.yaml`.
+* **`streaming.py`** has the generic sliding-window streamer (below), which works for any backend.
+* **`registry.py`** reads `models.yaml`, loads models lazily (cached, least recently used evicted), and collects test metrics. A model can be swapped while a stream is running.
+
+## Real-time interface
+
+```bash
+python scripts/realtime_server.py     # or scripts/run_realtime.ps1; opens http://127.0.0.1:7870
+```
+
+How the live demo works:
+
+* **Setup:** give a reference recording of the target, choose a model, then press Start.
+* **Input:** the live microphone (use headphones, or the output feeds back into the mic), or "simulated live" from a file or a random 2–4 speaker test mixture played at real-time speed.
+* **Output:** the extracted voice plays continuously. An A/B switch plays the original instead, and both signals can be downloaded.
+* **Display:** scrolling input and output waveforms, and a latency breakdown (hop + lookahead, model compute, playback margin, audio device).
+* **Live changes:** models can be switched while streaming. The input history is kept and the reference is re-enrolled automatically.
+
+**How it streams.** The models are non-causal: global layer norm, two-sided convolutions. Each live window is therefore processed like this:
+
+* Every `hop` seconds, the last `window` seconds (3 s) go through the model.
+* The hop that ends `lookahead` seconds before the newest sample is played. Algorithmic latency is hop + lookahead.
+* The per-window output scale is arbitrary under SI-SDR, so each window is rescaled by its least-squares projection onto the input window, `<est, mix> / <est, est>`. This is absolute, so no drift accumulates.
+* Seams are crossfaded over 20 ms.
+* The speaker embedding is computed once per reference (`embedding=` argument of the model forward).
+* Transport: the browser runs its audio graph at 8 kHz, and raw float32 frames travel over a WebSocket (needs Chrome or Edge, plus `pip install websockets`).
+
+`scripts/stream_eval.py` measures streamed vs offline SI-SDRi on fixed test subsets for several window/hop/lookahead settings. A first run, 3 samples of 3-speaker test mixtures while two trainings shared the GPU, so only indicative: offline 8.92 dB; 300 ms latency 7.94 dB; 400 ms 8.84 dB; 500 ms 8.95 dB. The full table is pending.
+
+Limitations of the live demo:
+
+* The models were trained on clean read speech at 8 kHz, so live microphones (room echo, noise, different channel) will be worse than the test sets.
+* The output has telephone bandwidth: nothing above 4 kHz.
+* Latency below about 150 ms would need a causal model trained for it. It would plug in as a new backend.
 
 ## Deviations from the spec
 

@@ -11,7 +11,7 @@ is used for the server; it binds to localhost by default.
 
 Example:
     python scripts/web_demo.py                 # then open http://127.0.0.1:7860
-    python scripts/web_demo.py --ckpt runs/proposed/best.pt --port 8000
+    python scripts/web_demo.py --registry my_models.yaml --port 8000
 """
 
 from __future__ import annotations
@@ -34,17 +34,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np  # noqa: E402
 
 from tse.config import PROJECT_ROOT, load_config, resolve_paths  # noqa: E402
-from tse.demo_app import Separator, SpeakerPool, mix_sources, score_extraction  # noqa: E402
+from tse.demo_app import SpeakerPool, mix_sources, score_extraction  # noqa: E402
+from tse.serving import ModelRegistry  # noqa: E402
+from tse.serving.registry import DEFAULT_REGISTRY  # noqa: E402
 from tse.utils import resolve_device, setup_logging  # noqa: E402
 
 log = logging.getLogger("web_demo")
 
-# Checkpoints offered in the model menu (relative to the project root; missing ones are skipped).
-DEFAULT_MODELS = [
-    ("saved_models/multispk_r6_ep79/best.pt", "R=6, trained on 2-4 speakers (recommended)"),
-    ("runs/finetune_multispk/best.pt", "R=3, fine-tuned on 2-4 speakers"),
-    ("saved_models/proposed_2spk_ep74/best.pt", "R=3, trained on 2 speakers only"),
-]
 PAGE = PROJECT_ROOT / "webui" / "index.html"
 MAX_SECONDS = 60.0
 MAX_BODY_BYTES = 64 * 1024 * 1024
@@ -66,21 +62,20 @@ def f32_to_b64(x: np.ndarray) -> str:
 class DemoState:
     """Models, data pool and settings shared by all requests."""
 
-    def __init__(self, models: list[tuple[str, str]], separator: Separator,
-                 pool: SpeakerPool | None, sample_rate: int) -> None:
-        self.models = models
-        self.separator = separator
+    def __init__(self, registry: ModelRegistry, pool: SpeakerPool | None) -> None:
+        self.registry = registry
         self.pool = pool
-        self.sample_rate = sample_rate
+        self.sample_rate = registry.get().sample_rate  # also preloads the default model
         self.rng = np.random.default_rng()
 
     def info(self) -> dict[str, Any]:
         return {
             "sample_rate": self.sample_rate,
             "max_seconds": MAX_SECONDS,
-            "models": [{"id": i, "label": label} for i, (_, label) in enumerate(self.models)],
+            "models": [{"id": m["id"], "label": m["label"] + (" (default)" if m["default"] else "")}
+                       for m in self.registry.available()],
             "random_available": self.pool is not None,
-            "device": str(self.separator.device),
+            "device": str(self.registry.device),
         }
 
     def random(self, n: int, gender_mode: str) -> dict[str, Any]:
@@ -106,21 +101,23 @@ class DemoState:
         if len(enrollment) < self.sample_rate // 2:
             raise ValueError("the reference clip must be at least 0.5 s long")
         gains = [float(g) for g in req.get("gains_db", [0.0] * len(sources))]
-        model_id = int(req.get("model", 0))
-        if not 0 <= model_id < len(self.models):
-            raise ValueError("unknown model")
+        model_id = req.get("model") or self.registry.default_id
+        if model_id not in self.registry.entries:
+            raise ValueError(f"unknown model {model_id!r}")
+        backend = self.registry.get(model_id)
+        if backend.sample_rate != self.sample_rate:
+            raise ValueError("this model uses a different sample rate than the page")
         limit = int(MAX_SECONDS * self.sample_rate)
         if max(len(s) for s in sources) > limit:
             raise ValueError(f"each recording must be at most {MAX_SECONDS:.0f} s")
         mixture, scaled = mix_sources(sources, gains, req.get("length_mode", "longest"))
-        ckpt = self.models[model_id][0]
         t0 = time.perf_counter()
-        est = self.separator.extract(ckpt, mixture, enrollment)
+        est = backend.extract(mixture, backend.enroll(enrollment))
         elapsed = time.perf_counter() - t0
         scores = score_extraction(est, scaled, mixture, target)
         peak = float(np.abs(est).max())
         est_play = est / peak * 0.9 if peak > 0 else est  # SI-SDR output scale is arbitrary
-        log.info("separate: %d speakers, %.1f s, model %d, target %d -> SI-SDRi %.2f dB (%.0f ms)",
+        log.info("separate: %d speakers, %.1f s, model %s, target %d -> SI-SDRi %.2f dB (%.0f ms)",
                  len(sources), len(mixture) / self.sample_rate, model_id, target,
                  scores["si_sdri"], elapsed * 1e3)
         return {
@@ -190,8 +187,8 @@ def make_handler(state: DemoState) -> type[BaseHTTPRequestHandler]:
 def main() -> None:
     """Entry point."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("--ckpt", nargs="*", default=None,
-                    help="checkpoint(s) to offer (default: the saved/fine-tuned models)")
+    ap.add_argument("--registry", default=str(DEFAULT_REGISTRY),
+                    help="models.yaml listing the models to offer")
     ap.add_argument("--config", default=str(PROJECT_ROOT / "configs" / "proposed.yaml"),
                     help="config whose data section locates the dataset for random speakers")
     ap.add_argument("--data-root", default=None, help="override data.root")
@@ -203,17 +200,9 @@ def main() -> None:
     args = ap.parse_args()
     setup_logging()
 
-    if args.ckpt:
-        models = [(str(Path(c).resolve()), Path(c).parent.name) for c in args.ckpt]
-    else:
-        models = [(str(PROJECT_ROOT / p), label) for p, label in DEFAULT_MODELS
-                  if (PROJECT_ROOT / p).is_file()]
-    missing = [p for p, _ in models if not Path(p).is_file()]
-    if not models or missing:
-        raise SystemExit(f"checkpoint(s) not found: {missing or 'none of the defaults exist'}")
-
-    separator = Separator(resolve_device(args.device))
-    sr = separator.sample_rate(models[0][0])  # also preloads the default model
+    registry = ModelRegistry(args.registry, resolve_device(args.device))
+    if not registry.available():
+        raise SystemExit(f"no model in {args.registry} has an existing checkpoint")
     cfg = resolve_paths(load_config(args.config), args.data_root)
     pool = None
     try:
@@ -221,10 +210,10 @@ def main() -> None:
     except (FileNotFoundError, OSError, KeyError, ValueError) as e:
         log.warning("Random test speakers disabled: %s", e)
 
-    state = DemoState(models, separator, pool, sr)
+    state = DemoState(registry, pool)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(state))
     url = f"http://{args.host}:{args.port}"
-    log.info("Models: %s", ", ".join(label for _, label in models))
+    log.info("Models: %s", ", ".join(m["label"] for m in registry.available()))
     print(f"\n  TSE demo running at {url}   (Ctrl+C to stop)\n", flush=True)
     if not args.no_browser:
         webbrowser.open(url)

@@ -1,8 +1,8 @@
 """Core of the interactive web demo (``scripts/web_demo.py``).
 
 The user supplies 2-4 separate single-speaker recordings and a reference clip of the
-target speaker. :func:`mix_sources` levels and sums them into a mixture, a
-:class:`Separator` runs a trained checkpoint on it, and :func:`score_extraction`
+target speaker. :func:`mix_sources` levels and sums them into a mixture, a model from
+the registry (:mod:`tse.serving`) runs on it, and :func:`score_extraction`
 compares the output with every source, which is possible because the clean sources are
 known. :class:`SpeakerPool` draws random LibriSpeech test speakers (with a second
 utterance as the reference) so the demo also works without any recordings.
@@ -11,19 +11,16 @@ utterance as the reference) so the demo also works without any recordings.
 from __future__ import annotations
 
 import logging
-import threading
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 
 from .data.dataset import read_audio
 from .data.dynamic_mix import active_rms
 from .data.enrollment import build_utterance_pool
 from .data.index import load_index, source_fields
 from .metrics import si_sdr_np
-from .utils import load_model_from_checkpoint
 
 log = logging.getLogger(__name__)
 
@@ -85,42 +82,6 @@ def score_extraction(est: np.ndarray, sources: list[np.ndarray], mixture: np.nda
         "si_sdr_vs_sources": per_source,
         "closest_source": int(np.argmax(per_source)),
     }
-
-
-class Separator:
-    """Loads checkpoints on demand (cached) and runs target-speaker extraction."""
-
-    def __init__(self, device: torch.device) -> None:
-        self.device = device
-        self._models: dict[str, tuple[torch.nn.Module, dict]] = {}
-        self._lock = threading.Lock()
-
-    def _get(self, ckpt_path: str) -> tuple[torch.nn.Module, dict]:
-        if ckpt_path not in self._models:
-            log.info("Loading %s", ckpt_path)
-            self._models[ckpt_path] = load_model_from_checkpoint(ckpt_path, self.device)
-        return self._models[ckpt_path]
-
-    def sample_rate(self, ckpt_path: str) -> int:
-        """Sample rate the checkpoint was trained at."""
-        with self._lock:
-            return int(self._get(ckpt_path)[1]["config"]["data"]["sample_rate"])
-
-    @torch.no_grad()
-    def extract(self, ckpt_path: str, mixture: np.ndarray, enrollment: np.ndarray) -> np.ndarray:
-        """Extract the enrolled speaker from ``mixture``. The enrollment is center-cropped to
-        the checkpoint's ``enroll_seconds_eval``, as in evaluation."""
-        with self._lock:
-            model, ckpt = self._get(ckpt_path)
-            d = ckpt["config"]["data"]
-            n_e = int(d["enroll_seconds_eval"] * d["sample_rate"])
-            if len(enrollment) > n_e:
-                s = (len(enrollment) - n_e) // 2
-                enrollment = enrollment[s:s + n_e]
-            mix = torch.from_numpy(np.ascontiguousarray(mixture, dtype=np.float32))[None]
-            enr = torch.from_numpy(np.ascontiguousarray(enrollment, dtype=np.float32))[None]
-            est = model(mix.to(self.device), enr.to(self.device), compute_interference=False)["est"]
-            return est[0].float().cpu().numpy()
 
 
 class SpeakerPool:

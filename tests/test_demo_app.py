@@ -15,8 +15,9 @@ import torch
 from conftest import small_model_cfg
 from tse.config import DEFAULTS
 from tse.data.dynamic_mix import active_rms
-from tse.demo_app import Separator, SpeakerPool, mix_sources, score_extraction
+from tse.demo_app import SpeakerPool, mix_sources, score_extraction
 from tse.models import build_model
+from tse.serving import ModelRegistry
 from tse.utils import save_checkpoint
 
 
@@ -35,6 +36,13 @@ def tiny_ckpt(tmp_path: Path) -> str:
     path = tmp_path / "tiny.pt"
     save_checkpoint(path, build_model(cfg["model"], n_speakers=3), cfg, {"a": 0, "b": 1, "c": 2})
     return str(path)
+
+
+def _registry(tmp_path: Path, ckpt: str) -> ModelRegistry:
+    reg = tmp_path / "models.yaml"
+    reg.write_text(f"default: tiny\nmodels:\n- id: tiny\n  label: tiny\n  backend: ueconv\n"
+                   f"  checkpoint: '{Path(ckpt).as_posix()}'\n", encoding="utf-8")
+    return ModelRegistry(reg, torch.device("cpu"))
 
 
 def test_mix_sources_levels_lengths_and_sum() -> None:
@@ -67,14 +75,6 @@ def test_score_extraction_finds_closest_source() -> None:
     assert score_extraction(est, srcs, mix, target=0)["closest_source"] == 2
 
 
-def test_separator_output_length(tiny_ckpt: str) -> None:
-    sep = Separator(torch.device("cpu"))
-    assert sep.sample_rate(tiny_ckpt) == 8000
-    out = sep.extract(tiny_ckpt, np.random.randn(8013).astype(np.float32),
-                      np.random.randn(80000).astype(np.float32))  # enrollment gets cropped
-    assert out.shape == (8013,) and np.isfinite(out).all()
-
-
 def test_random_speakers(fake_librimix: dict) -> None:
     pool = SpeakerPool(fake_librimix["data_cfg"], "test")
     rng = np.random.default_rng(0)
@@ -88,20 +88,19 @@ def test_random_speakers(fake_librimix: dict) -> None:
             assert len({s["gender"] for s in spk}) == 2
 
 
-def test_http_round_trip(tiny_ckpt: str, fake_librimix: dict) -> None:
+def test_http_round_trip(tiny_ckpt: str, fake_librimix: dict, tmp_path: Path) -> None:
     wd = _load_web_demo()
-    state = wd.DemoState([(tiny_ckpt, "tiny")], Separator(torch.device("cpu")),
-                         SpeakerPool(fake_librimix["data_cfg"], "test"), 8000)
+    state = wd.DemoState(_registry(tmp_path, tiny_ckpt), SpeakerPool(fake_librimix["data_cfg"], "test"))
     server = wd.ThreadingHTTPServer(("127.0.0.1", 0), wd.make_handler(state))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
         info = json.load(urllib.request.urlopen(base + "/api/info"))
-        assert info["models"] == [{"id": 0, "label": "tiny"}]
+        assert info["models"] == [{"id": "tiny", "label": "tiny (default)"}]
         rnd = json.load(urllib.request.urlopen(base + "/api/random?n=3&gender=any"))
         spk = rnd["speakers"]
         body = json.dumps({"sources": [s["audio"] for s in spk], "gains_db": [0, 0, 0],
-                           "target": 1, "enrollment": spk[1]["ref_audio"], "model": 0}).encode()
+                           "target": 1, "enrollment": spk[1]["ref_audio"], "model": "tiny"}).encode()
         req = urllib.request.Request(base + "/api/separate", body,
                                      {"Content-Type": "application/json"})
         res = json.load(urllib.request.urlopen(req))

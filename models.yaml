@@ -1,0 +1,21 @@
+# Models available to the demos (scripts/web_demo.py, scripts/realtime_server.py).
+# Edit by hand or with scripts/register_model.py; `default` is the model used
+# unless another one is picked. Relative paths are relative to the project root.
+default: r6_multispk
+models:
+- id: r6_multispk
+  label: R=6, trained on 2-4 speakers
+  backend: ueconv
+  checkpoint: saved_models/multispk_r6_ep79/best.pt
+  metrics_dir: runs/multispk_deep_r6
+  notes: Best model so far (2026-10-22). Trained from scratch, 80 epochs, dynamic 2-4 speaker mixing.
+- id: r3_finetune_multispk
+  label: R=3, fine-tuned on 2-4 speakers
+  backend: ueconv
+  checkpoint: runs/finetune_multispk/best.pt
+  notes: The 2-speaker model fine-tuned for 25 epochs on 2-4 speaker mixtures.
+- id: r3_2spk
+  label: R=3, trained on 2 speakers only
+  backend: ueconv
+  checkpoint: saved_models/proposed_2spk_ep74/best.pt
+  notes: Original Libri2Mix model (epoch 74).

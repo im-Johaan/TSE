@@ -390,7 +390,7 @@ $("#runBtn").onclick = async () => {
       gains_db: active.map(s => s.gain),
       target: state.target,
       enrollment: f32ToB64(state.speakers[state.target].ref),
-      model: +$("#model").value,
+      model: $("#model").value,
       length_mode: $("#lengthMode").value,
     });
     setStatus("");

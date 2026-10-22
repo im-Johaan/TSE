@@ -32,11 +32,14 @@ class TDSpeakerBeam(TSEBase):
         self.adapt = nn.Linear(cfg["spk_dim"], B)
         self.mask = nn.Sequential(nn.PReLU(), nn.Conv1d(B, N, 1))
 
-    def forward(self, mixture: torch.Tensor, enrollment: torch.Tensor,
-                compute_interference: bool | None = None) -> dict[str, torch.Tensor | None]:
+    def forward(self, mixture: torch.Tensor, enrollment: torch.Tensor | None,
+                compute_interference: bool | None = None,
+                embedding: torch.Tensor | None = None) -> dict[str, torch.Tensor | None]:
+        """``embedding`` (B, spk_dim), if given, is used instead of ``embed(enrollment)`` (e.g.
+        a speaker embedding computed once for streaming); ``enrollment`` may then be None."""
         x_pad, T = self.encoder.pad(mixture)
         W = self.encoder(x_pad)
-        e = self.embed(enrollment)
+        e = embedding if embedding is not None else self.embed(enrollment)
         x = self.bottleneck(W)
         for i, blk in enumerate(self.blocks):
             x = blk(x)
